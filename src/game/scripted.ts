@@ -11,6 +11,25 @@ import { CLAIM_COST, RAZE_COST, RAZE_HOME_COST } from "../shared/engine/constant
 import type { Submission } from "../shared/engine/orders.js";
 import type { ObsTile, TerritoryObservation } from "./redact.js";
 
+/**
+ * THE TUNED PARAMETERS. Both baselines have exactly three free numbers between
+ * them, and they were SEARCHED, not guessed: `src/game/tune.ts` sweeps the grid
+ * over seeded 18-turn nine-seat episodes, `scripts/sweep-baselines.ts` prints the
+ * table (committed at `docs/baseline-sweep.md`), and `src/game/tune.test.ts`
+ * re-runs the sweep in CI and fails if the shipped values stop being the argmax.
+ * Changing a value here without re-running the sweep fails that test.
+ */
+export interface HomesteaderParams {
+  /** Claims emitted per turn, at most. */
+  maxClaims: number;
+}
+export interface RaiderParams extends HomesteaderParams {
+  /** Only raze a leader tile whose yield is at least this. */
+  minYield: number;
+}
+export const HOMESTEADER_PARAMS: HomesteaderParams = { maxClaims: 3 };
+export const RAIDER_PARAMS: RaiderParams = { maxClaims: 4, minYield: 3 };
+
 export const SCRIPTED_NAMES = ["homesteader", "raider"] as const;
 export type ScriptedName = (typeof SCRIPTED_NAMES)[number];
 
@@ -73,15 +92,15 @@ function claimPlan(view: TerritoryObservation, budget: number, max: number): { t
 
 /** `homesteader` — the certification baseline and filler #1. Claims the richest
  *  reachable wall it can afford, never razes, never transfers. */
-export function homesteader(view: TerritoryObservation): Submission {
-  const plan = claimPlan(view, view.you.paint, 3);
+export function homesteader(view: TerritoryObservation, params: HomesteaderParams = HOMESTEADER_PARAMS): Submission {
+  const plan = claimPlan(view, view.you.paint, params.maxClaims);
   return { orders: plan.tiles.map((tile) => ({ type: "claim" as const, tile })), messages: [] };
 }
 
 /** `raider` — filler #2. Homesteads through turn 3, then from turn 4 razes the
  *  leader's richest reachable wall before spending the rest like a homesteader. */
-export function raider(view: TerritoryObservation): Submission {
-  if (view.turn < view.razeOpensTurn) return homesteader(view);
+export function raider(view: TerritoryObservation, params: RaiderParams = RAIDER_PARAMS): Submission {
+  if (view.turn < view.razeOpensTurn) return homesteader(view, params);
 
   const rivals = view.cogs.filter((c) => c.alive && c.seat !== view.you.seat);
   const leader = [...rivals].sort((a, b) => b.banked - a.banked || a.seat - b.seat)[0];
@@ -91,7 +110,7 @@ export function raider(view: TerritoryObservation): Submission {
   if (leader) {
     const target = view.razeReach
       .map((t) => ({ t, tile: tileOf(view, t) }))
-      .filter((c) => c.tile !== undefined && c.tile.owner === leader.alias && c.tile.yield >= 2)
+      .filter((c) => c.tile !== undefined && c.tile.owner === leader.alias && c.tile.yield >= params.minYield)
       .sort((a, b) => (b.tile!.yield - a.tile!.yield) || (a.t < b.t ? -1 : 1))[0];
     if (target) {
       const cost = razeCostOf(view, target.t);
@@ -102,7 +121,7 @@ export function raider(view: TerritoryObservation): Submission {
     }
   }
 
-  const plan = claimPlan(view, budget, 3);
+  const plan = claimPlan(view, budget, params.maxClaims);
   for (const tile of plan.tiles) orders.push({ type: "claim", tile });
   return { orders, messages: [] };
 }

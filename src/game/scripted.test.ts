@@ -15,7 +15,7 @@ import type { GameState } from "../shared/engine/types";
 import type { Submission } from "../shared/engine/orders";
 import { MAX_ORDERS_PER_TURN, RAZE_OPEN_TURN, SEATS } from "../shared/engine/constants";
 import { observe } from "./redact";
-import { homesteader, raider, scriptedDecide } from "./scripted";
+import { homesteader, raider, scriptedDecide, RAIDER_PARAMS } from "./scripted";
 
 /** A varied mid-game state: different variants, turns, paint, damage and a
  *  couple of eliminated seats once the game is old enough. */
@@ -126,7 +126,8 @@ describe("scripted baselines", () => {
 
     // Make seat 1 the runaway leader, and put a rich tile of its inside seat 0's
     // raze reach so the raid has a target.
-    const target = legalRazeTargets(s, 0).find((k) => s.tiles[k]!.yield >= 2)!;
+    // At the raider's TUNED threshold (docs/baseline-sweep.md), not a literal.
+    const target = legalRazeTargets(s, 0).find((k) => s.tiles[k]!.yield >= RAIDER_PARAMS.minYield)!;
     const seeded: GameState = {
       ...s,
       tiles: { ...s.tiles, [target]: { ...s.tiles[target]!, owner: 1, wet: false, claimedTurn: 1 } },
