@@ -12,6 +12,8 @@ import { capText, renderEvent, runeLength, truncateRunes } from "./text";
 import { newGame, stepTurn } from "./game";
 import { MAX_NOTE_LEN, MAX_SAY_LEN } from "./constants";
 import { capNote, resolve } from "./resolve";
+import { MAX_LINES } from "./constants";
+import { SubmissionSchema } from "./orders";
 import { toSnapshot } from "../snapshot";
 
 const EMOJI = "\u{1F9F1}"; // 🧱 — a non-BMP code point, i.e. a surrogate PAIR
@@ -117,5 +119,39 @@ describe("the recorded replay is strict UTF-8", () => {
     for (const line of lines) expect(hasLoneSurrogate(line)).toBe(false);
     const bytes = Buffer.from(JSON.stringify({ lines }), "utf8");
     expect(() => new TextDecoder("utf-8", { fatal: true }).decode(bytes)).not.toThrow();
+  });
+});
+
+describe("the reply schema applies its own caps at the parse boundary", () => {
+  // The caps have to bite HERE, not only inside Resolve: the decision this schema
+  // returns is what the host records in the `actPrompt` transcript, so the value
+  // that reaches the replay is this one. Before this, `note` was capped into a
+  // field nothing read, while the uncapped original rode the transcript.
+  it("rune-caps `note`, rune-caps every talk line and drops the lines past MAX_LINES", () => {
+    const nasty = `${EMOJI.repeat(300)}${CJK.repeat(60)}`;
+    const parsed = SubmissionSchema.parse({
+      orders: [],
+      note: nasty,
+      messages: Array.from({ length: MAX_LINES + 4 }, () => ({ text: nasty })),
+    });
+    expect(runeLength(parsed.note!)).toBe(MAX_NOTE_LEN);
+    expect(hasLoneSurrogate(parsed.note!)).toBe(false);
+    expect(parsed.messages).toHaveLength(MAX_LINES);
+    for (const line of parsed.messages) {
+      expect(runeLength(line.text)).toBe(MAX_SAY_LEN);
+      expect(hasLoneSurrogate(line.text)).toBe(false);
+      expect(line.to).toBeNull();
+    }
+    // The capped decision serializes clean under a FATAL decoder — this is the
+    // string the transcript records.
+    const bytes = Buffer.from(JSON.stringify(parsed), "utf8");
+    expect(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))).toEqual(parsed);
+  });
+
+  it("leaves a short note and a short line exactly as sent, and an absent note absent", () => {
+    const parsed = SubmissionSchema.parse({ orders: [], messages: [{ to: "Sable", text: "hold the ring" }] });
+    expect("note" in parsed).toBe(false);
+    expect(parsed.messages).toEqual([{ to: "Sable", text: "hold the ring" }]);
+    expect(SubmissionSchema.parse({ note: "why I did this" }).note).toBe("why I did this");
   });
 });

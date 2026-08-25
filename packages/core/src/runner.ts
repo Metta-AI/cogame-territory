@@ -22,6 +22,31 @@ import type { Pilot, DecideContext } from "./pilot";
 
 export type RunMessageListener = (m: ServerMessage) => void;
 
+// ── recorded-transcript caps ──────────────────────────────────────────────────
+// Every `actPrompt` attempt is emitted as a replay frame, so every string on one
+// is a string that reaches the replay and must be truncated ON RUNE BOUNDARIES (a
+// byte- or UTF-16-boundary cut renders fine in a browser and fails a strict JSON
+// parser). The caps are deliberately generous — they bound a pathological reply,
+// a 1 MB note or a runaway error message, not a normal turn.
+const PROMPT_CAP_RUNES = 16_000;
+const RESPONSE_CAP_RUNES = 4_000;
+const ERROR_CAP_RUNES = 500;
+
+/** The first `cap` CODE POINTS of `s`, with `…` inside the cap when it was cut.
+ *  Never splits a surrogate pair. */
+function capRunes(s: string, cap: number): string {
+  const runes = Array.from(s);
+  if (runes.length <= cap) return s;
+  return `${runes.slice(0, Math.max(0, cap - 1)).join("")}\u2026`;
+}
+
+/** One recorded attempt, with every field rune-capped for the replay. */
+const capAttempt = (a: ActAttempt): ActAttempt => ({
+  prompt: capRunes(a.prompt, PROMPT_CAP_RUNES),
+  response: capRunes(a.response, RESPONSE_CAP_RUNES),
+  error: a.error === null ? null : capRunes(a.error, ERROR_CAP_RUNES),
+});
+
 /** The unified live-advance policy. When `enabled`, a pending seat that does not
  *  decide within `maxTimeMs` is moved on with a `baselineDecision`; when disabled,
  *  the runner waits for the seat's pilot however long it takes (a human sets their
@@ -525,13 +550,13 @@ export class GameRunner<State, Decision> {
       if (outcome === "advance") {
         usedFallback = true;
         seatPilot.pilot.abort?.(seat);
-        attempts.push({ prompt: "", response: "", error: `no reply within ${this.#maxTimeMs}ms; holding` });
+        attempts.push(capAttempt({ prompt: "", response: "", error: `no reply within ${this.#maxTimeMs}ms; holding` }));
         decision = this.#game.baselineDecision(stateAtTurn, seat);
       } else if (outcome.ok) {
         decision = outcome.d;
       } else {
         usedFallback = true;
-        attempts.push({ prompt: "", response: "", error: errorMessage(outcome.e) });
+        attempts.push(capAttempt({ prompt: "", response: "", error: errorMessage(outcome.e) }));
         decision = this.#game.baselineDecision(stateAtTurn, seat);
       }
     } finally {
@@ -725,7 +750,7 @@ export class GameRunner<State, Decision> {
           continue;
         } else {
           usedFallback = true;
-          attempts.push({ prompt: "", response: "", error: errorMessage(outcome.e) });
+          attempts.push(capAttempt({ prompt: "", response: "", error: errorMessage(outcome.e) }));
           decision = this.#game.baselineDecision(stateAtTurn, seat);
         }
       } finally {
@@ -797,7 +822,9 @@ export class GameRunner<State, Decision> {
         return parsed;
       },
       recordAttempt(attempt: ActAttempt): void {
-        attempts.push(attempt);
+        // Rune-capped HERE, the single choke point every transcript passes on its
+        // way to an `actPrompt` replay frame.
+        attempts.push(capAttempt(attempt));
       },
     };
   }

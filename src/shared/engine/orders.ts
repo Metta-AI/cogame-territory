@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { distance, key } from "./hex";
+import { capText } from "./text";
 import type { GameState, HexKey } from "./types";
 import {
   CLAIM_COST,
@@ -56,11 +57,22 @@ export type TalkLineIn = z.input<typeof TalkLineSchema>;
  * scripted player sends. Caps are enforced on the way in: entries past
  * `MAX_LINES` are DROPPED (not rejected); `text` and `note` are TRUNCATED on
  * rune boundaries. Anything else that violates the schema bounces the whole set.
+ *
+ * The caps are applied HERE, at the parse boundary, and not only inside Resolve:
+ * the decision this schema returns is what the host records in the `actPrompt`
+ * transcript and therefore in the replay, so an uncapped 1 MB `note` or a
+ * 10 000-rune line must never survive the parse (item 9).
  */
 export const SubmissionSchema = z.object({
   orders: z.array(OrderSchema).max(MAX_ORDERS_PER_TURN).default([]),
-  messages: z.array(TalkLineSchema).default([]),
-  note: z.string().optional(),
+  messages: z
+    .array(TalkLineSchema)
+    .default([])
+    .transform((lines) => lines.slice(0, MAX_LINES).map((l) => ({ ...l, text: capText(l.text, MAX_SAY_LEN) }))),
+  note: z
+    .string()
+    .optional()
+    .transform((n) => (n === undefined ? undefined : capText(n, MAX_NOTE_LEN))),
   /** Set by a player (or the host baseline) that could not think this turn. */
   fallback: z.boolean().optional(),
 });

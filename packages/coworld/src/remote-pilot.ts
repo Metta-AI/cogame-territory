@@ -159,7 +159,11 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
         const response = JSON.stringify(raw);
         try {
           const decision = ctx.validate(raw);
-          ctx.recordAttempt({ prompt: JSON.stringify(view), response, error: null });
+          // Record the ACCEPTED decision, not the raw frame: `validate` runs the
+          // game's schema, which is where the reply caps live (rune-capped `note`
+          // and talk lines), so the transcript that lands in the replay carries the
+          // capped values rather than whatever length the player sent.
+          ctx.recordAttempt({ prompt: JSON.stringify(view), response: JSON.stringify(decision), error: null });
           return decision;
         } catch (err) {
           // Legitimate control flow: a rejected candidate re-prompts the player
