@@ -179,6 +179,16 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
         for (const frame of frames) for (const message of decode(frame)) applyFrame(storeRef.current, message);
         // Draw the re-derivation, not the recording.
         adoptRederivation(storeRef.current, frames);
+        // A replay that fetched fine and decoded to NOTHING (every frame failed
+        // its boundary schema) used to leave the page on "Loading replay…" with
+        // neither marker set — silence an embed cannot distinguish from a slow
+        // load. It is a load failure; say so.
+        if (storeRef.current.snapshots.length === 0) {
+          const message = `replay decoded no snapshots (${frames.length} frames)`;
+          setLoadError(`Replay failed to load: ${message}`);
+          signalError(message);
+          return;
+        }
         rerender();
       },
       (reason: unknown) => {
