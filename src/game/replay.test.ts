@@ -22,6 +22,8 @@ import { territoryModule } from "./game";
 import type { TerritoryDecision, TerritorySeamState, TerritoryView } from "./game";
 import type { TerritoryObservation } from "./redact";
 import { rederiveReplay } from "./rederive";
+import { applyFrame, emptyStore } from "../client/net/feed";
+import { makeCogwebDecoder } from "../client/net/cogweb-feed";
 import { scriptedDecide } from "./scripted";
 import { EVENT_KINDS } from "../shared/engine/log";
 import { MAX_TURNS, SEATS } from "../shared/engine/constants";
@@ -189,6 +191,19 @@ describe("the recorded replay", () => {
     for (const snap of derived.snapshots) {
       expect(gameSnapshotSchema.parse(recorded.get(snap.turn))).toEqual(gameSnapshotSchema.parse(snap));
     }
+  });
+
+  it("and the VIEWER adopts that re-derivation on these bytes", () => {
+    // `App.tsx` swaps the store's timeline for the re-derivation only when the
+    // re-derivation covers every recorded frame. This is that condition, checked
+    // on the real artifact: without it the page would quietly fall back to
+    // drawing the recorded snapshots and only the jsdom test would notice.
+    const env = TerritoryReplay.parse(replay);
+    const store = emptyStore();
+    const decode = makeCogwebDecoder();
+    for (const frame of env.frames) for (const message of decode(frame)) applyFrame(store, message);
+    expect(store.snapshots).toHaveLength(MAX_TURNS + 1);
+    expect(rederiveReplay(env.frames).snapshots).toHaveLength(store.snapshots.length);
   });
 
   it("every snapshot carries the whole board and every seat's public state", () => {
