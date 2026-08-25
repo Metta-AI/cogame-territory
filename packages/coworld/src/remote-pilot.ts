@@ -23,7 +23,12 @@ import { WebSocket } from "ws";
 import type { Pilot, DecideContext } from "@cogweb/core";
 import { PlayerToGame, type InboxMessage, type ObservationMessage, type TalkLine } from "./protocol";
 
-const MAX_ATTEMPTS = 3;
+// ONE RETRY, then the runner's baseline — the number the design note declares
+// ("Reply is well-formed but illegal | Host re-requests once with the engine's
+// reason (`RemotePlayerPilot`, `MAX_ATTEMPTS = 2`)"), and the number its Bedrock
+// budget arithmetic is built on: a third request per seat per turn would push the
+// nine-seat batch over the sidecar's 30 requests/minute episode cap.
+const MAX_ATTEMPTS = 2;
 const GIVE_UP_AFTER_TIMEOUTS = 3;
 
 export interface RemotePlayerPilotOpts {
