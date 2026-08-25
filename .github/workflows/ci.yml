@@ -76,10 +76,14 @@ jobs:
         # The template is GENERATED (`pnpm emit-manifest`). A hand edit here would
         # silently diverge from src/game/coworld.ts, which is what `coworld build`
         # reads at release time.
+        # `pnpm emit-manifest` redirects into the committed file ITSELF, so
+        # regenerate in place and let git report the drift. (Redirecting pnpm's own
+        # stdout instead captures its `> pkg@ver emit-manifest` run preamble, which
+        # is not JSON and always "differs".)
         run: |
           set -euo pipefail
-          pnpm emit-manifest > /tmp/manifest.json
-          diff -u coworld_manifest_template.json /tmp/manifest.json || {
+          pnpm emit-manifest
+          git diff --exit-code -- coworld_manifest_template.json || {
             echo "::error::coworld_manifest_template.json is stale. Run: pnpm emit-manifest"
             exit 1; }
           python3 - <<'PY'
