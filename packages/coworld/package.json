@@ -1,0 +1,19 @@
+{
+  "name": "@cogweb/coworld",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@cogweb/core": "workspace:*",
+    "@cogweb/llm": "workspace:*",
+    "@cogweb/protocol": "workspace:*",
+    "@types/express": "^4.17.21",
+    "@types/ws": "^8.5.0",
+    "express": "^4.21.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  }
+}

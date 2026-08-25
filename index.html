@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      // Pin <base> to the instance root so the (relative, vite base "./") asset links
+      // resolve at ANY route depth. Territory is served three ways: the Coworld
+      // container at "/" (+ /client/* viewer shells, where the host injects its own
+      // equivalent <base> first), a local dev server, and the Observatory STATIC replay
+      // bundle at /v2/coworlds/replays/static/<cow>/<manifest_hash>/index.html?replay=….
+      // At a deep route a relative "./assets/x.js" resolves against the wrong directory
+      // and 404s to the SPA-fallback HTML — the script never runs and the page is blank.
+      // Strip a trailing "/<file>.html" (the static-bundle shape) and any internal-route
+      // suffix off the path (mirrors nav.ts instancePrefix) to recover the serving root;
+      // it is "/" at the standalone/coworld root. This runs before the asset tags below,
+      // so they inherit the base.
+      (function () {
+        var prefix = location.pathname
+          .replace(/\/+$/, "")
+          .replace(/\/[^/]+\.html$/, "")
+          .replace(/(?:\/client\/(?:global|player|replay)|\/seat\/\d+|\/feed)$/, "");
+        var base = document.createElement("base");
+        base.href = prefix + "/";
+        document.head.appendChild(base);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#07070c" />
+    <title>Territory</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
+  </body>
+</html>

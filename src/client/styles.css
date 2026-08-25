@@ -1,0 +1,1188 @@
+/* Territory — observatory aesthetic
+   ============================================================
+   A near-black instrument panel watching a hex lattice of resource walls that
+   only ever gets poorer. Paint is light; a raze is a scar. Inherited from
+   coworld-cogherence's console and recoloured to Territory's vocabulary. */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+:root {
+  /* surfaces */
+  --bg: #07070c;
+  --bg-2: #0a0a12;
+  --panel: #0e0e18;
+  --panel-2: #13131f;
+  --panel-3: #191926;
+  --border: #1f1f2e;
+  --border-2: #2b2b3e;
+  --text: #eef0f8;
+  --text-dim: #aeb2c6;
+  --muted: #6b6f85;
+  --muted-2: #444a60;
+  --neutral: #2a2a36;
+
+  /* Territory's own vocabulary */
+  --paint: #3ce0c0;      /* a claim that pays */
+  --raze: #ff5a2c;       /* a permanent scar */
+  --rubble-ink: #5a5f70; /* gone forever */
+  --stagger: #ffc14d;    /* one more strike and it is over */
+  --deal: #ffc14d;
+  --claim: #2ee6a0;
+  --transfer: #42d4f4;
+
+  /* type */
+  --f-ui: "Space Grotesk", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* legacy aliases (inherited components) */
+  --accent: var(--paint);
+  --accent-2: var(--transfer);
+  --line: var(--border);
+  --r: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 14px;
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font-family: inherit;
+}
+button:focus-visible {
+  outline: 1px solid var(--paint);
+  outline-offset: 1px;
+}
+
+/* ===== type atoms ======================================== */
+.cg-mono {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+.cg-num {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.cg-label {
+  font-family: var(--f-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cg-glow {
+  text-shadow: 0 0 12px currentColor, 0 0 30px currentColor;
+}
+.cg-quiet {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 3px 0;
+}
+
+/* ===== app shell =========================================
+   THREE flex children: the top bar, the stage, the transport row. The transport
+   band owns its own height and nothing can paint into it. */
+.app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+.app::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 500px at 50% 38%, rgba(60, 224, 192, 0.05), transparent 70%),
+    radial-gradient(700px 600px at 12% 100%, rgba(77, 124, 255, 0.05), transparent 70%),
+    radial-gradient(600px 500px at 92% 6%, rgba(255, 90, 44, 0.04), transparent 70%);
+}
+.app > * {
+  position: relative;
+  z-index: 1;
+}
+/* The stage: everything Territory draws lives in here. */
+.cg-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: var(--f-mono);
+}
+
+/* ===== panels ============================================ */
+.cg-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 40%), var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  position: relative;
+}
+.cg-flex {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cg-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.cg-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  min-width: 0;
+}
+.cg-panel-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--paint);
+  box-shadow: 0 0 10px var(--paint);
+  flex: 0 0 auto;
+}
+.cg-panel-note {
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cg-panel-body {
+  padding: 11px 12px;
+}
+.cg-col-gap {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.cg-glass {
+  background: rgba(14, 14, 24, 0.86);
+  backdrop-filter: blur(6px);
+}
+.cg-turnjump {
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  font-size: 8.5px;
+}
+.cg-turnjump:hover {
+  color: var(--paint);
+}
+.cg-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+/* ===== #scorebug — the income-per-tick leaderboard ======== */
+.scorebug {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.scorebug-pool {
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.scorebug-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 46vh;
+}
+.plate {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  border-style: solid;
+  border-width: 1px 1px 1px 3px;
+  border-color: var(--border) var(--border) var(--border) currentColor;
+  transition: background 0.14s, box-shadow 0.14s, opacity 0.14s;
+}
+.plate:hover {
+  background: var(--panel-3);
+}
+.plate.is-focus {
+  box-shadow: inset 0 0 0 1px var(--border-2);
+  background: var(--panel-3);
+}
+.plate-rank {
+  width: 14px;
+  font-size: 11px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+/* The scorebug must stay legible in the ~360px featured-match iframe: the name
+   flexes and never collapses to an ellipsis. */
+/* The alias sits over the policy name rather than beside it, so neither has to
+   ellipsize in a 306px column — and `min-width` keeps the name from collapsing to
+   "…" in the ~360px featured-match iframe. */
+.plate-name {
+  flex: 1 1 auto;
+  min-width: 3.2em;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: 12px;
+  overflow: hidden;
+}
+.plate-alias {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.plate-policy {
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plate-score {
+  font-size: 16px;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.plate-rate,
+.plate-walls {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.plate-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.badge-staggered {
+  font-family: var(--f-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--stagger);
+  border: 1px solid var(--stagger);
+  border-radius: 4px;
+  padding: 0 3px;
+  animation: cg-pulse 1.1s ease-in-out infinite;
+}
+.badge-steady {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+.plate.is-staggered {
+  box-shadow: inset 0 0 0 1px rgba(255, 193, 77, 0.5);
+  animation: cg-plate-flash 1.6s ease-in-out infinite;
+}
+.plate.is-eliminated {
+  opacity: 0.45;
+}
+.plate.is-eliminated .plate-name,
+.plate.is-eliminated .plate-score {
+  text-decoration: line-through;
+  color: var(--muted) !important;
+}
+@keyframes cg-plate-flash {
+  0%,
+  100% {
+    background: var(--panel-2);
+  }
+  50% {
+    background: rgba(255, 193, 77, 0.12);
+  }
+}
+
+/* ===== #feed — the wars-started ledger ==================== */
+.warledger {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.warledger-count {
+  font-size: 18px;
+  color: var(--raze);
+  text-shadow: 0 0 12px rgba(255, 90, 44, 0.6);
+}
+.warledger-rows {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+}
+.warledger-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 5px;
+}
+.warledger-row:hover {
+  background: var(--panel-2);
+}
+.warledger-turn {
+  font-size: 9px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.warledger-text {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.warledger-quiet {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+/* ===== turn log ========================================== */
+.cg-section {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cg-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 0 3px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 3px;
+}
+.cg-section-head .cg-label {
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+}
+.cg-section-right {
+  font-size: 9px;
+  color: var(--muted);
+}
+.cg-logrow {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 6px;
+  align-items: start;
+  padding: 2px 0;
+}
+.cg-logtext {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.cg-logline {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 2px 0;
+}
+.cg-incomegrid {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  column-gap: 9px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 3px 0;
+}
+.cg-incomename {
+  font-size: 10px;
+}
+.cg-incomeval {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--paint);
+  justify-self: end;
+}
+.cg-incomewalls {
+  font-size: 9.5px;
+  color: var(--muted);
+  justify-self: end;
+}
+
+/* ===== verb tag ========================================== */
+.cg-verb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: var(--f-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.cg-verb.claim {
+  background: rgba(46, 230, 160, 0.14);
+  color: var(--claim);
+}
+.cg-verb.raze {
+  background: rgba(255, 90, 44, 0.16);
+  color: var(--raze);
+}
+.cg-verb.transfer {
+  background: rgba(66, 212, 244, 0.14);
+  color: var(--transfer);
+}
+
+/* ===== paint chip ======================================== */
+.cg-min {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+}
+.cg-min.paint {
+  background: rgba(60, 224, 192, 0.14);
+  box-shadow: 0 0 8px rgba(60, 224, 192, 0.35);
+}
+
+/* ===== channels ========================================== */
+.cg-msg {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+.cg-msg.is-dm {
+  background: rgba(255, 193, 77, 0.05);
+  border-color: rgba(255, 193, 77, 0.28);
+}
+.cg-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.cg-msg-from {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: 11px;
+}
+.cg-msg-scope {
+  font-size: 8.5px;
+}
+.cg-msg-scope.is-public {
+  color: var(--paint);
+}
+.cg-msg-scope.is-dm {
+  color: var(--deal);
+}
+.cg-msg-body {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ===== segmented tabs ==================================== */
+.cg-seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.cg-seg button {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--f-ui);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all 0.14s;
+}
+.cg-seg button.on {
+  background: var(--panel-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-2);
+}
+
+/* ===== scrollbars ======================================== */
+.cg-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+.cg-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+.cg-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cg-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 4px;
+}
+
+/* ===== live / replay badge =============================== */
+.cg-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--paint);
+}
+.cg-replay {
+  color: var(--muted);
+}
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-dim);
+}
+.conn-live {
+  color: var(--paint);
+  border-color: rgba(60, 224, 192, 0.4);
+}
+.cg-tbtn {
+  height: 26px;
+  min-width: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cg-tbtn:hover {
+  border-color: var(--border-2);
+}
+
+/* ===== view grids ======================================== */
+.cg-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.cg-grid {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  flex: 1;
+  min-height: 0;
+}
+.cg-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.cg-gutter {
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.cg-gutter::after {
+  content: "";
+  width: 2px;
+  height: 34px;
+  border-radius: 2px;
+  background: var(--border-2);
+  transition: background 0.15s, height 0.15s;
+}
+.cg-gutter:hover::after {
+  background: var(--paint);
+  height: 60px;
+  box-shadow: 0 0 10px var(--paint);
+}
+
+/* ===== the board ========================================= */
+.cg-lattice {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+.cg-lattice-inner {
+  position: absolute;
+  inset: 0;
+  padding: 8px;
+}
+.cg-overlay-tl {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+}
+.cg-overlay-br {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+}
+.cg-pulse,
+.cg-legend,
+.cg-navhint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+}
+.cg-navhint {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  opacity: 0.72;
+  color: var(--muted);
+}
+.cg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.cg-hovercard {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* THE DRYING-PAINT ANIMATION. 1.0 -> 0.35 opacity, scale 1.0 -> 0.86 over 250 ms,
+   matching the replay's one-snapshot-per-250 ms playback: wet paint visibly
+   settles into the tile it just claimed. */
+@keyframes cg-drying {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.35;
+    transform: scale(0.86);
+  }
+}
+.cg-tile.cg-drying .cg-drying-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cg-drying 250ms ease-out infinite alternate;
+}
+@keyframes cg-stagger-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.cg-stagger {
+  animation: cg-stagger-pulse 900ms ease-in-out infinite;
+}
+@keyframes cg-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ===== tile inspector ==================================== */
+.cg-inspector {
+  width: 250px;
+  background: rgba(14, 14, 24, 0.94);
+  backdrop-filter: blur(8px);
+}
+.cg-insp-head {
+  padding: 7px 10px;
+}
+.cg-insp-title {
+  font-size: 10.5px;
+}
+.cg-insp-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cg-insp-owner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cg-insp-chip {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.cg-insp-name {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: 12px;
+}
+.cg-insp-status {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.cg-insp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cg-insp-label {
+  font-size: 8.5px;
+  padding: 2px 0;
+}
+.cg-insp-value {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: right;
+  padding: 2px 0;
+}
+
+/* ===== tile pill ========================================= */
+.cg-tilepill {
+  display: inline-block;
+  font-family: var(--f-mono);
+  font-size: 0.92em;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: default;
+}
+.cg-tilepill:hover {
+  border-color: var(--paint);
+  box-shadow: 0 0 6px rgba(60, 224, 192, 0.4);
+}
+
+/* ===== phase strip ======================================= */
+.cg-phases {
+  display: flex;
+  align-items: center;
+}
+.cg-phase {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  font-family: var(--f-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cg-phase-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-2);
+}
+.cg-phase.done {
+  color: var(--text-dim);
+}
+.cg-phase.done .cg-phase-dot {
+  background: var(--text-dim);
+}
+.cg-phase.current {
+  color: var(--paint);
+}
+.cg-phase.current .cg-phase-dot {
+  background: var(--paint);
+  box-shadow: 0 0 10px var(--paint);
+  animation: cg-pulse 1.6s ease-in-out infinite;
+}
+
+/* ===== the scrubber's rail beats =========================
+   The rail cells themselves are the inherited chrome's real, labelled <button>s;
+   Territory fills their renderRailExtra slot with the per-turn beat, and EVERY
+   BEAT KIND CARRIES ITS OWN CLASS so a spectator can read the shape of the game
+   off the transport alone. */
+#scrub {
+  flex: none;
+}
+.beat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+}
+.beat-share {
+  display: flex;
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--panel-3);
+}
+.beat-share > span {
+  display: block;
+  height: 100%;
+}
+.beat-razes {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  color: var(--raze);
+}
+.beat-skull {
+  font-size: 9px;
+}
+.beat-quiet .beat-share {
+  opacity: 0.75;
+}
+.beat-smear .beat-share {
+  box-shadow: inset 0 0 0 1px var(--deal);
+}
+.beat-raze .beat-share {
+  box-shadow: inset 0 0 0 1px var(--raze);
+}
+.beat-elim .beat-share {
+  box-shadow: inset 0 0 0 1px #ff2e63;
+}
+.beat-elim .beat-skull {
+  color: #ff2e63;
+  text-shadow: 0 0 6px #ff2e63;
+}
+
+/* ===== the endcard ======================================= */
+.cg-endcard {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+}
+.cg-endcard-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cg-endcard-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border-left: 3px solid currentColor;
+}
+.cg-endcard-row.is-eliminated {
+  opacity: 0.5;
+}
+.cg-endcard-rank {
+  width: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cg-endcard-walls,
+.cg-endcard-razes {
+  font-size: 10px;
+  color: var(--muted);
+}
+.cg-endcard-score {
+  font-size: 19px;
+  margin-left: auto;
+}
+.cg-endcard-loss {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--raze);
+  text-align: center;
+}
+
+/* ===== seat view ========================================= */
+.cg-seatstat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.cg-seatstat .cg-num {
+  font-size: 22px;
+}
+.cg-seatline {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.cg-transcript {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+.cg-transcript-head {
+  font-size: 9px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.cg-transcript-body {
+  margin: 0;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ===== talk feed ========================================= */
+.cg-feed {
+  display: flex;
+  padding: 10px;
+}
+.cg-feed-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cg-feed-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+.cg-feed-group {
+  margin-bottom: 12px;
+}
+.cg-feed-turn {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 0 8px;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+/* ===== tooltip (global, data-tip) ======================== */
+.cg-tip {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: rgba(14, 14, 24, 0.96);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* ===== view switcher ===================================== */
+.view-switcher {
+  position: relative;
+}
+.vs-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.vs-caret {
+  color: var(--muted);
+  font-size: 9px;
+}
+.vs-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 150px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+.vs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border-left: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.vs-row:hover {
+  background: var(--panel-2);
+}
+.vs-row.is-active {
+  background: var(--panel-3);
+}
+.vs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.vs-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 2px;
+}
+
+/* ==========================================================================
+   THE 360px CONTRACT.
+   The base console was built for desktop spectating and carries no @media query
+   at all. Territory adds this one block: it hides the /tick figure, the policy
+   name and the rail's phase pips, keeps `.plate-name` from collapsing, and drops
+   the three-column stage to a single stacked column. `tools/ci/renderer_fixture`
+   (test 14) is what holds it at 360px.
+   ========================================================================== */
+@media (max-width: 640px) {
+  .cg-grid {
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    overflow-y: auto;
+  }
+  .cg-gutter {
+    display: none;
+  }
+  .cg-col {
+    gap: 8px;
+  }
+  .cg-lattice {
+    min-height: 42vh;
+  }
+  .plate-tick,
+  .plate-policy,
+  .plate-rank {
+    display: none;
+  }
+  .plate-rate,
+  .plate-walls {
+    font-size: 9px;
+  }
+  .plate {
+    gap: 5px;
+    padding: 5px 6px;
+  }
+  .plate-score {
+    font-size: 14px;
+  }
+  .scorebug-rows {
+    max-height: none;
+  }
+  .cogui-sbar-pips,
+  .cogui-sbar-phases,
+  .cogui-sbar-scrubhint {
+    display: none !important;
+  }
+  .cg-navhint,
+  .cg-legend {
+    display: none;
+  }
+  .cg-logrow {
+    grid-template-columns: 52px 1fr;
+  }
+  .cg-endcard-walls,
+  .cg-endcard-razes {
+    display: none;
+  }
+}

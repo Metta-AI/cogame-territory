@@ -1,0 +1,318 @@
+# CI for Metta-AI/cogame-territory.
+#
+# Derived from coworld-builder templates/ci.yml with SLUG=territory,
+# IMAGE=territory-coworld, SEATS=9. The Nim toolchain steps are replaced by the
+# pnpm pipeline (this lineage is a TypeScript/pnpm workspace — there is no Nim and
+# no emscripten here), but the JOB NAMES and the docker-smoke / wasm-viewer job
+# CONTRACTS are the template's, unchanged:
+#
+#   test         pnpm install --frozen-lockfile / typecheck / test / build
+#   docker-smoke tools/ci/docker_smoke.sh behind a `test -x`, uploading the
+#                replay it produced as the `smoke-replay` artifact
+#   wasm-viewer  tools/build_replay_viewer.sh behind a `test -x`, then it
+#                EXECUTES the bundle against that replay with
+#                tools/ci/viewer_smoke.mjs (+ the renderer fixture at 360px)
+#
+# The coworld-builder sandbox has no docker and no browser: this workflow is the
+# only place either runs, and phase 20's exit criterion is this workflow green on
+# main.
+#
+# `--strict-text-bounds` is deliberately NOT passed: Territory's board is
+# PANNABLE (169 hexes are larger than the frame at 360px), so text may legitimately
+# sit off-frame, and this viewer draws text in SVG/DOM rather than canvas — the
+# canvas_text counters read 0 here and prove nothing. The renderer fixture below is
+# what covers what that flag would have covered.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SLUG: territory
+  IMAGE: territory-coworld
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Typecheck + the whole vitest suite + the production build. A green test
+  # job means the bundles the image copies actually compile.
+  # ---------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build (web bundle + the self-contained server bundles)
+        run: pnpm build
+
+      - name: Assert the generated manifest template is committed and current
+        # The template is GENERATED (`pnpm emit-manifest`). A hand edit here would
+        # silently diverge from src/game/coworld.ts, which is what `coworld build`
+        # reads at release time.
+        run: |
+          set -euo pipefail
+          pnpm emit-manifest > /tmp/manifest.json
+          diff -u coworld_manifest_template.json /tmp/manifest.json || {
+            echo "::error::coworld_manifest_template.json is stale. Run: pnpm emit-manifest"
+            exit 1; }
+          python3 - <<'PY'
+          import json, sys
+          m = json.load(open("coworld_manifest_template.json"))
+          seats = 9
+          assert m["game"]["name"] == "territory", m["game"]["name"]
+          assert m["episode_timeout_minutes"] == 20
+          assert m["game"]["replay_viewer"]["bundle"] == "build/static-replay-viewer"
+          assert m["game"]["runnable"]["image"] == "{{TERRITORY_IMAGE}}"
+          assert m["certification"]["game_config"]["num_agents"] == seats
+          assert len(m["certification"]["players"]) == seats
+          for v in m["variants"]:
+              assert v["game_config"]["num_agents"] == seats, v["id"]
+          print("manifest OK")
+          PY
+
+  # ---------------------------------------------------------------------
+  # Packaging smoke: the production image builds, and one real episode runs
+  # end to end in raw docker with the certification fixture's seat mix.
+  # ---------------------------------------------------------------------
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # Invoked by path, not through `bash`: a `bash SCRIPT` call ignores the exec
+      # bit, so a 0644 helper would go green here and only fail wherever it is
+      # executed directly.
+      - name: Assert the smoke script is present and executable
+        run: |
+          set -euo pipefail
+          test -f tools/ci/docker_smoke.sh || {
+            echo "::error::tools/ci/docker_smoke.sh is missing"; exit 1; }
+          test -x tools/ci/docker_smoke.sh || {
+            echo "::error::tools/ci/docker_smoke.sh must be committed executable (mode 100755)."
+            echo "::error::Fix with: git update-index --chmod=+x tools/ci/docker_smoke.sh"
+            exit 1; }
+
+      # The image COPIES pre-built bundles, so a stale binary is impossible only
+      # if the bundles are built in this same run — which they are, here.
+      - name: Build the bundles the image copies
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build image
+        run: docker build --platform=linux/amd64 -t "${IMAGE}:ci" .
+
+      - name: Raw-Docker episode smoke
+        env:
+          SMOKE_SLUG: ${{ env.SLUG }}
+        run: ./tools/ci/docker_smoke.sh "${IMAGE}:ci"
+
+      # The replay this episode produced is the ONLY replay in CI that is known to
+      # be a real, current-format episode of this game. wasm-viewer downloads it
+      # and loads it in a browser, so the viewer is tested against the bytes the
+      # platform will actually serve rather than a fixture that can drift.
+      - name: Upload the smoke replay
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-replay
+          path: dist/smoke/
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The static replay viewer. The platform serves THIS bundle from
+  # /v2/coworlds/replays/static/<cow_id>/<sha>/index.html, so a bundle that
+  # does not build — or that builds and never renders — means every hosted
+  # replay hangs. Here it is BUILT and then EXECUTED against the replay
+  # docker-smoke just produced.
+  # ---------------------------------------------------------------------
+  wasm-viewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: docker-smoke
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # `coworld build` (bundle.py) refuses to package a source replay-viewer
+      # bundle unless the hook is BOTH a file and os.X_OK. Running it as
+      # `bash tools/build_replay_viewer.sh` would ignore the exec bit entirely, so
+      # a mode-0644 hook would pass CI and blow up later, in coworld-release.yml's
+      # "Build the Coworld manifest". Assert the bit, then invoke by path.
+      - name: Assert the replay-viewer build hook is present and executable
+        run: |
+          set -euo pipefail
+          test -f tools/build_replay_viewer.sh || {
+            echo "::error::tools/build_replay_viewer.sh is missing; coworld build needs it"
+            echo "::error::to emit the static replay bundle"
+            exit 1; }
+          test -x tools/build_replay_viewer.sh || {
+            echo "::error::tools/build_replay_viewer.sh must be committed executable (mode 100755):"
+            echo "::error::coworld build hard-requires os.X_OK on the build hook."
+            echo "::error::Fix with: git update-index --chmod=+x tools/build_replay_viewer.sh"
+            exit 1; }
+
+      - name: Assert the viewer load test is present
+        run: |
+          set -euo pipefail
+          test -s tools/ci/viewer_smoke.mjs || {
+            echo "::error::tools/ci/viewer_smoke.mjs is missing. It is the only gate that"
+            echo "::error::EXECUTES the replay viewer; without it a bundle that deadlocks"
+            echo "::error::(cogame-lantern, 2026-08-23) ships green. Copy it from"
+            echo "::error::coworld-builder templates/tools/ci/viewer_smoke.mjs."
+            exit 1; }
+          test -s tools/ci/renderer_fixture.mjs || {
+            echo "::error::tools/ci/renderer_fixture.mjs is missing (design note test 14)."
+            exit 1; }
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the static replay viewer bundle
+        # The declared bundle path is `build/static-replay-viewer`, and
+        # scripts/build-static-replay-viewer.sh refuses any output that does not
+        # end in it.
+        run: ./tools/build_replay_viewer.sh "$PWD/build/static-replay-viewer"
+
+      - name: Assert the bundle is complete
+        # No .wasm assertion: this lineage's static bundle is a VITE BUILD of the
+        # same TypeScript sim (there is no emscripten path), so the artefacts to
+        # assert are the shells and the JS chunk they load.
+        run: |
+          set -euo pipefail
+          out="$PWD/build/static-replay-viewer"
+          for f in index.html index-agent.html tools/ci/renderer_fixture.html; do
+            test -s "${out}/${f}" || { echo "::error::${out}/${f} missing or empty"; exit 1; }
+          done
+          js_count="$(find "${out}/assets" -name '*.js' -size +1c | wc -l | tr -d ' ')"
+          if [ "${js_count}" -lt 1 ]; then
+            echo "::error::no non-empty .js chunk in ${out}/assets"
+            find "${out}" -type f | sed 's/^/  /'
+            exit 1
+          fi
+          echo "bundle OK:"
+          find "${out}" -type f -printf '  %p (%s bytes)\n'
+
+      - name: Download the smoke replay
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-replay
+          path: dist/smoke
+
+      - name: Install Playwright (pinned 1.55.0)
+        # In a SCRATCH directory, not the repo root: this is a pnpm workspace, and
+        # `npm install` in the root dies on the `workspace:*` dependency protocol
+        # (EUNSUPPORTEDPROTOCOL). Both harnesses honour PLAYWRIGHT_MODULE, which is
+        # exactly what that env var is for. The module and the browser are pinned
+        # TOGETHER — bump both or neither, or the browser download 404s.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1.55.0
+          npx --yes playwright@1.55.0 install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright/index.js" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------
+      # The load test. Everything above only proves files EXIST.
+      # cogame-lantern shipped a viewer where every file was present and every
+      # asset 200 and the page sat on "Loading replay..." forever. Only opening
+      # it in a browser sees that. `--soak 15` then proves LOADING IS NOT
+      # PLAYING: the clock has to keep advancing after the first frame.
+      # -----------------------------------------------------------------
+      - name: Load the bundle in a real browser
+        run: |
+          set -euo pipefail
+          replay=""
+          for candidate in dist/smoke/*.replay dist/smoke/replay.json; do
+            if [ -f "${candidate}" ]; then replay="${candidate}"; break; fi
+          done
+          test -n "${replay}" || {
+            echo "::error::docker-smoke uploaded no replay to dist/smoke"; ls -la dist/smoke || true; exit 1; }
+          echo "loading ${replay} in build/static-replay-viewer"
+          node tools/ci/viewer_smoke.mjs \
+            --bundle build/static-replay-viewer \
+            --replay "${replay}" \
+            --timeout 90 \
+            --soak 15
+
+      # -----------------------------------------------------------------
+      # The renderer fixture (design note test 14). docker_smoke runs KEYLESS,
+      # so every replay CI produces carries zero LLM text and nothing above
+      # ever exercises the talk chrome. This mounts the real ScoreBug,
+      # WarLedger and Channels over full-cap CJK+emoji lines at 360 / 720 /
+      # 1280 px and fails on any row that overflows or any invisible text.
+      # -----------------------------------------------------------------
+      - name: Renderer fixture at 360 / 720 / 1280 px
+        run: |
+          set -euo pipefail
+          node tools/ci/renderer_fixture.mjs \
+            --bundle build/static-replay-viewer \
+            --widths 360,720,1280
+
+      - name: Upload the viewer smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-smoke
+          path: |
+            viewer-smoke.png
+            viewer-smoke.json
+            renderer-fixture.json
+            renderer-fixture-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-replay-viewer
+          path: build/static-replay-viewer
+          if-no-files-found: error
+          retention-days: 14

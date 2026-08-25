@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-server/
+.deploy-version.json
+build/
+out/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp
+
+# Test / coverage
+coverage/
+.cache/
+
+# CI harness evidence (uploaded as artifacts, never committed)
+viewer-smoke.png
+viewer-smoke.json
+renderer-fixture.json
+renderer-fixture-*.png
+playwright-report/
+test-results/
+
+# Scratch nano-banana generations. The RAWS THAT SHIP are committed under
+# scripts/art/source/ so the assets are reproducible; this is only for culls.
+generated_imgs/
+
+# Coworld local build/cert artifacts
+tmp/

@@ -1,0 +1,12 @@
+{
+  "name": "@cogweb/protocol",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  }
+}

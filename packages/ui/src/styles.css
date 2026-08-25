@@ -1,0 +1,2733 @@
+/* @cogweb/ui — minimal, unobtrusive styles for the shared primitives. Games
+   override via these class names; only structural/affordance rules live here.
+   A handful of CSS variables (with fallbacks) let a host theme the accents. */
+
+.cogui-scrubber,
+.cogui-feed,
+.cogui-autopilot,
+.cogui-lobby,
+.cogui-roster,
+.cogui-topbar,
+.cogui-seatbar,
+.cogui-phases,
+.cogui-gtb,
+.cogui-sbar,
+.cogui-fd,
+.cogui-apc {
+  --cogui-accent: var(--accent, #3ce0c0);
+  --cogui-border: var(--border, #2a2e3a);
+  --cogui-panel: var(--panel, #14161d);
+  --cogui-muted: var(--muted, #8a90a0);
+  --cogui-text: var(--text, #e6e8ee);
+  --cogui-ember: var(--ember, #ffae42);
+  font-family: var(--cogui-font, system-ui, sans-serif);
+  color: var(--cogui-text);
+}
+
+.cogui-mono {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+}
+.cogui-spacer {
+  flex: 1;
+}
+.cogui-btn {
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 10px;
+}
+.cogui-btn:hover {
+  border-color: var(--cogui-accent);
+}
+.cogui-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.cogui-btn:disabled:hover {
+  border-color: var(--cogui-border);
+}
+
+/* ---- Lobby ---- */
+.cogui-lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 10px;
+  background: var(--cogui-panel);
+}
+.cogui-lobby-head,
+.cogui-lobby-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cogui-lobby-title {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+.cogui-lobby-count {
+  font-size: 11px;
+  color: var(--cogui-muted);
+  font-variant-numeric: tabular-nums;
+}
+.cogui-lobby-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cogui-lobby-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 8px;
+}
+.cogui-lobby-seat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cogui-lobby-seat-no {
+  color: var(--cogui-muted);
+  font-size: 11px;
+}
+.cogui-lobby-seat-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+/* Per-seat bot steering (shown when a game passes `models`): an inline model
+   dropdown + a gear toggle on the seat row, and an expandable guidance box. */
+.cogui-lobby-model {
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  font: inherit;
+  padding: 4px 8px;
+  max-width: 200px;
+}
+.cogui-icon-btn {
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
+}
+.cogui-icon-btn.is-set {
+  border-color: var(--cogui-accent);
+  color: var(--cogui-accent);
+}
+.cogui-lobby-guidance {
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  font: inherit;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.cogui-lobby-seat-name {
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Inline-editable player name (rename a seat's occupant). */
+.cogui-lobby-seat-name-input {
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  width: 140px;
+  max-width: 160px;
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  padding: 3px 7px;
+}
+.cogui-lobby-seat-name-input:hover:not(:disabled),
+.cogui-lobby-seat-name-input:focus {
+  border-color: var(--cogui-accent);
+  outline: none;
+}
+.cogui-lobby-seat-name-input:disabled {
+  opacity: 0.6;
+}
+.cogui-lobby-name {
+  flex: 1;
+  max-width: 200px;
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  font: inherit;
+  padding: 5px 8px;
+}
+
+/* ---- Scrubber ---- */
+.cogui-scrubber {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cogui-rail {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  background: var(--cogui-panel);
+  cursor: pointer;
+  touch-action: none;
+}
+.cogui-tick {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 2px;
+  background: rgba(120, 130, 160, 0.12);
+}
+.cogui-tick.is-now {
+  background: rgba(120, 130, 160, 0.28);
+}
+.cogui-thumb {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--cogui-accent);
+  box-shadow: 0 0 10px var(--cogui-accent);
+  pointer-events: none;
+}
+.cogui-transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cogui-tbtn {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 5px;
+  background: var(--cogui-panel);
+  color: var(--cogui-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.cogui-tbtn.is-wide {
+  width: 34px;
+}
+.cogui-tbtn:hover {
+  border-color: var(--cogui-accent);
+}
+.cogui-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.cogui-live-dot.is-live {
+  background: var(--cogui-accent);
+  box-shadow: 0 0 8px var(--cogui-accent);
+}
+.cogui-live-dot.is-replay {
+  background: var(--cogui-muted);
+}
+.cogui-readout {
+  margin-left: 6px;
+  font-size: 13px;
+}
+
+/* ---- EventFeed ---- */
+.cogui-feed {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cogui-feed-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+.cogui-feed-empty {
+  color: var(--cogui-muted);
+  font-size: 12px;
+}
+.cogui-feed-group {
+  margin-bottom: 10px;
+}
+.cogui-feed-head {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cogui-muted);
+  border-bottom: 1px solid var(--cogui-border);
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+.cogui-feed-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cogui-feed-line {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+.cogui-feed-seat {
+  color: var(--cogui-accent);
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+}
+.cogui-feed-compose {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--cogui-border);
+}
+.cogui-feed-input {
+  flex: 1;
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 6px;
+  color: var(--cogui-text);
+  font: inherit;
+  padding: 5px 8px;
+}
+
+/* ---- AutopilotPanel ---- */
+.cogui-autopilot {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 10px;
+  background: var(--cogui-panel);
+}
+.cogui-autopilot.is-on {
+  border-color: var(--cogui-accent);
+}
+.cogui-ap-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.cogui-ap-title {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cogui-ap-model {
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 999px;
+  color: var(--cogui-text);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.cogui-switch {
+  width: 42px;
+  height: 23px;
+  flex: none;
+  border: 1px solid var(--cogui-border);
+  border-radius: 999px;
+  background: var(--cogui-panel);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+.cogui-switch.on {
+  border-color: var(--cogui-accent);
+  background: rgba(60, 224, 192, 0.18);
+}
+.cogui-switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.cogui-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--cogui-muted);
+  transition: left 0.15s, background 0.15s;
+}
+.cogui-switch.on .cogui-knob {
+  left: 21px;
+  background: var(--cogui-accent);
+  box-shadow: 0 0 9px var(--cogui-accent);
+}
+.cogui-ap-guidance {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 8px;
+  color: var(--cogui-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+.cogui-ap-status {
+  font-size: 11.5px;
+}
+.cogui-ap-status.is-off {
+  color: var(--cogui-muted);
+}
+.cogui-ap-status.is-thinking {
+  color: #ffae42;
+}
+.cogui-ap-status.is-active {
+  color: var(--cogui-accent);
+}
+.cogui-ap-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.cogui-ap-transcript-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cogui-muted);
+}
+.cogui-ap-entry {
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+.cogui-ap-entry > summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--cogui-text);
+}
+.cogui-ap-fallback {
+  color: #ffae42;
+}
+.cogui-ap-attempt {
+  margin-top: 6px;
+}
+.cogui-ap-attempt-head {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cogui-muted);
+}
+.cogui-ap-error {
+  color: #ff6a55;
+}
+.cogui-ap-prompt,
+.cogui-ap-response {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--cogui-muted);
+  max-height: 200px;
+  overflow: auto;
+}
+.cogui-ap-response {
+  color: var(--cogui-text);
+}
+
+/* ---- PlayerRoster ---- */
+.cogui-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.cogui-roster-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 9px 10px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 8px;
+  background: var(--cogui-panel);
+  color: var(--cogui-text);
+  transition: opacity 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.cogui-roster-card.is-selected {
+  border-color: var(--cogui-accent);
+  box-shadow: 0 0 0 1px var(--cogui-accent), 0 0 16px rgba(60, 224, 192, 0.4);
+}
+.cogui-roster-card.is-dimmed {
+  opacity: 0.5;
+}
+.cogui-roster-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+.cogui-roster-status {
+  font-size: 10px;
+  color: var(--cogui-muted);
+}
+.cogui-roster-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The seat the table is waiting on glows ember (ported from cognames' tabs). */
+.cogui-roster-card.is-waiting-on {
+  border-color: var(--cogui-ember, #ffae42);
+}
+.cogui-roster-card.is-thinking {
+  box-shadow: 0 0 0 1px var(--cogui-ember, #ffae42), 0 0 16px rgba(255, 174, 66, 0.35);
+  animation: cogui-pulse 1.3s ease-in-out infinite;
+}
+
+/* ---- TopBar ---- */
+.cogui-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--cogui-border);
+  background: var(--cogui-panel);
+}
+.cogui-topbar-left,
+.cogui-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+}
+.cogui-topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- SeatBar (seats along the top bar) ---- */
+.cogui-seatbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.cogui-seat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 6px 11px;
+  border: 1px solid var(--cogui-border);
+  border-radius: 8px;
+  background: var(--cogui-panel);
+  color: var(--cogui-text);
+  transition: opacity 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.cogui-seat-tab.is-selected {
+  border-color: var(--cogui-accent);
+  box-shadow: 0 0 0 1px var(--cogui-accent), 0 0 14px rgba(60, 224, 192, 0.35);
+}
+.cogui-seat-tab.is-dimmed {
+  opacity: 0.5;
+}
+.cogui-seat-tab-name {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.cogui-seat-tab-score {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--cogui-muted);
+}
+/* The seat the table is waiting on glows ember, matching the roster cards. */
+.cogui-seat-tab.is-waiting-on {
+  border-color: var(--cogui-ember, #ffae42);
+}
+.cogui-seat-tab.is-thinking {
+  box-shadow: 0 0 0 1px var(--cogui-ember, #ffae42), 0 0 14px rgba(255, 174, 66, 0.35);
+  animation: cogui-pulse 1.3s ease-in-out infinite;
+}
+/* The seat you are driving by hand: a steady accent ring. */
+.cogui-seat-tab.is-controlling {
+  border-color: var(--cogui-accent);
+  box-shadow: 0 0 0 1px var(--cogui-accent);
+}
+
+/* Per-seat pilot marker: a "YOU" pill on the seat you control, else a human/bot
+   glyph so spectators see at a glance which seats are people vs models. */
+.cogui-seat-you {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--cogui-accent);
+  color: #06251f;
+  flex: 0 0 auto;
+}
+.cogui-seat-pilot {
+  font-size: 11px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+/* The 🤖 indicator is a click target when the seat has autopilot. */
+.cogui-seat-pilot.is-clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+.cogui-seat-pilot.is-clickable:hover {
+  background: color-mix(in srgb, var(--cogui-accent) 22%, transparent);
+}
+
+/* ---- SeatBar right-click menu (live seat control) ---- */
+.cogui-seatmenu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.cogui-seatmenu {
+  position: fixed;
+  z-index: 100;
+  min-width: 172px;
+  background: var(--cogui-panel);
+  border: 1px solid var(--cogui-border);
+  border-radius: 9px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  padding: 4px 0;
+}
+.cogui-seatmenu-head {
+  padding: 6px 12px 7px;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cogui-muted);
+  border-bottom: 1px solid var(--cogui-border);
+}
+.cogui-seatmenu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--cogui-text);
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cogui-seatmenu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.cogui-seatmenu-note {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--cogui-muted);
+  white-space: nowrap;
+}
+
+/* Autopilot popover opened from the seat menu's "Autopilot…" item. Shares the
+   menu's scrim; floats the seat's AutopilotPanel under a small name/close head. */
+.cogui-seat-appop {
+  position: fixed;
+  z-index: 100;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  border: 1px solid var(--cogui-accent);
+  border-radius: 10px;
+  background: var(--cogui-panel);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+.cogui-seat-appop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--cogui-border);
+}
+.cogui-seat-appop-name {
+  flex: 1;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cogui-seat-appop-close {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--cogui-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.cogui-seat-appop-close:hover {
+  color: var(--cogui-text);
+}
+/* The panel is already framed by the popover card — drop its own border so they
+   don't double up. */
+.cogui-seat-appop .cogui-autopilot {
+  border: none;
+  border-radius: 0;
+}
+
+/* ---- PhaseIndicator ---- */
+.cogui-phases {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cogui-phase {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--cogui-border);
+  background: var(--cogui-panel);
+  color: var(--cogui-muted);
+  white-space: nowrap;
+}
+/* Already-passed phases dim; the live phase glows accent; upcoming stay muted. */
+.cogui-phase.is-done {
+  color: var(--cogui-text);
+  opacity: 0.7;
+}
+.cogui-phase.is-current {
+  color: var(--cogui-accent);
+  border-color: var(--cogui-accent);
+  box-shadow: 0 0 12px rgba(60, 224, 192, 0.3);
+}
+
+/* ---- SeatStatusBadge ---- */
+.cogui-seat-status {
+  --cogui-ember: var(--ember, #ffae42);
+  --cogui-accent: var(--accent, #3ce0c0);
+  --cogui-muted: var(--muted, #8a90a0);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cogui-muted);
+}
+.cogui-seat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cogui-muted);
+  flex: 0 0 auto;
+}
+/* Seated and ready (or a bot): steady accent dot. */
+.cogui-seat-status.is-ready .cogui-seat-dot {
+  background: var(--cogui-accent);
+  box-shadow: 0 0 7px var(--cogui-accent);
+}
+.cogui-seat-status.is-ready {
+  color: var(--cogui-accent);
+}
+/* Up next: steady ember. Thinking: pulsing ember (who the table waits on). */
+.cogui-seat-status.is-acting .cogui-seat-dot,
+.cogui-seat-status.is-thinking .cogui-seat-dot {
+  background: var(--cogui-ember);
+  box-shadow: 0 0 7px var(--cogui-ember);
+}
+.cogui-seat-status.is-acting,
+.cogui-seat-status.is-thinking {
+  color: var(--cogui-ember);
+}
+.cogui-seat-status.is-thinking .cogui-seat-dot {
+  animation: cogui-pulse 1.2s ease-in-out infinite;
+}
+/* A held seat whose human dropped reads as a warning. */
+.cogui-seat-status.is-disconnected .cogui-seat-dot {
+  background: #e0533c;
+}
+.cogui-seat-status.is-disconnected {
+  color: #e0533c;
+}
+
+@keyframes cogui-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* AutoAdvanceSettings — the pre-game lobby panel (toggle + max-time). */
+.cogui-aa-settings {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 2px;
+  border-top: 1px solid var(--cogui-border, #2a2e3a);
+  color: var(--text, #e6e8ee);
+  font-size: 13px;
+}
+.cogui-aa-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.cogui-aa-label {
+  color: var(--muted, #8a90a0);
+}
+.cogui-aa-secs {
+  width: 56px;
+  background: var(--panel, #14161d);
+  border: 1px solid var(--border, #2a2e3a);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  padding: 3px 6px;
+}
+.cogui-aa-secs:disabled {
+  opacity: 0.5;
+}
+.cogui-aa-unit {
+  color: var(--muted, #8a90a0);
+}
+
+/* AutoAdvanceControl — the in-game toggle + live countdown. */
+.cogui-aa-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cogui-aa-btn {
+  background: var(--panel, #14161d);
+  border: 1px solid var(--border, #2a2e3a);
+  border-radius: 6px;
+  color: var(--text, #e6e8ee);
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.cogui-aa-btn:hover {
+  border-color: var(--accent, #3ce0c0);
+}
+.cogui-aa-control[data-on="true"] .cogui-aa-btn {
+  border-color: var(--accent, #3ce0c0);
+  color: var(--accent, #3ce0c0);
+}
+.cogui-aa-count {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+  color: var(--accent, #3ce0c0);
+}
+
+/* ===========================================================================
+   Unified in-game chrome — GameTopBar / GameScrubberBar / FeedDrawer /
+   AutopilotConfig. Ported from the "Game Top Bar" design (claude.ai/design):
+   one bar every cogame mounts above its board + a scrubber bar below it. The
+   chrome is intentionally a darker surface than the cogui panels; the single
+   accent rides --cogui-accent so a host can retheme it. Games are told apart
+   by their logos, never by color.
+   =========================================================================== */
+
+@keyframes cogui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Thin scrollbars shared by the roster / rail / drawers. */
+.cogui-tbscroll {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2e3a transparent;
+}
+.cogui-tbscroll::-webkit-scrollbar {
+  height: 7px;
+  width: 7px;
+}
+.cogui-tbscroll::-webkit-scrollbar-thumb {
+  background: #2a2e3a;
+  border-radius: 8px;
+}
+
+/* ---- GameTopBar ---- */
+.cogui-gtb {
+  position: relative;
+  /* The persistent chrome sits above the in-board overlays (the FinalScorePanel
+     `.cogui-fs` at z40 fills the board region but must NOT cover the bar or its
+     open logo menu, which lives inside this stacking context). Stays below the
+     true modals (NamePrompt z60, seat menu z99). */
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 62px;
+  padding: 0 16px;
+  background: rgba(15, 17, 23, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #1b1e27;
+}
+.cogui-gtb-identity {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: none;
+}
+.cogui-gtb-logo {
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #0f1117;
+  border: 1px solid var(--cogui-border);
+  overflow: visible;
+  padding: 0;
+}
+.cogui-gtb-logo.is-menuable:hover {
+  border-color: color-mix(in srgb, var(--cogui-accent) 50%, transparent);
+}
+.cogui-gtb-logo.is-open {
+  border-color: color-mix(in srgb, var(--cogui-accent) 50%, transparent);
+}
+/* The square logo image (game.logoSrc) is a DIRECT child of the button; a wordmark
+   (game.wordmark) nests its own img under .cogui-gtb-wordmark and is sized by the
+   game, so scope this square sizing to the direct-child logo only. */
+.cogui-gtb-logo > img {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+  border-radius: 7px;
+}
+/* Wordmark identity (game.wordmark): a game's styled brand lockup stands in for
+   the square logo box + name. The button auto-sizes to the lockup and the menu
+   caret tucks inline after it instead of into the box corner. */
+.cogui-gtb-logo.has-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: auto;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: none;
+  border-color: transparent;
+}
+.cogui-gtb-logo.has-wordmark.is-menuable:hover,
+.cogui-gtb-logo.has-wordmark.is-open {
+  background: #0f1117;
+  border-color: transparent;
+}
+.cogui-gtb-logo.has-wordmark .cogui-gtb-caret {
+  position: static;
+  width: 12px;
+  height: 12px;
+  background: none;
+  border: none;
+  color: #7c8090;
+}
+.cogui-gtb-wordmark {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.cogui-gtb-caret {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #15171f;
+  border: 1px solid #2a2e3a;
+  color: #9aa0ad;
+}
+.cogui-gtb-id-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cogui-gtb-name {
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1;
+  color: #e9ebf1;
+}
+.cogui-gtb-phase {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #7c8090;
+}
+.cogui-gtb-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+.cogui-gtb-menu {
+  position: absolute;
+  z-index: 45;
+  top: 46px;
+  left: 0;
+  width: 188px;
+  background: #13151c;
+  border: 1px solid #2a2e3a;
+  border-radius: 11px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+}
+.cogui-gtb-menu-item {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  padding: 9px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #d6d9e0;
+}
+.cogui-gtb-menu-item:hover {
+  background: #1a1d26;
+}
+.cogui-gtb-menu-sep {
+  height: 1px;
+  background: #21242e;
+  margin: 5px 4px;
+}
+.cogui-gtb-divider {
+  width: 1px;
+  height: 30px;
+  background: #23262f;
+  flex: none;
+}
+.cogui-gtb-roster {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px;
+}
+.cogui-gtb-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  background: #161922;
+  border: 1px solid #262a35;
+  cursor: default;
+}
+.cogui-gtb-chip.is-thinking {
+  border-color: color-mix(in srgb, var(--cogui-ember) 50%, transparent);
+}
+.cogui-gtb-chip.is-you {
+  background: color-mix(in srgb, var(--cogui-accent) 12%, transparent);
+  border-color: var(--cogui-accent);
+}
+.cogui-gtb-chip.is-pick {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 6%, transparent);
+}
+.cogui-gtb-chip.is-kick {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: #e0533c;
+  background: rgba(224, 83, 60, 0.08);
+}
+.cogui-gtb-chip.is-selectable {
+  cursor: pointer;
+}
+.cogui-gtb-chip.is-selectable:hover {
+  border-color: color-mix(in srgb, var(--cogui-accent) 45%, transparent);
+}
+.cogui-gtb-chip-name {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  color: #e6e8ee;
+  white-space: nowrap;
+}
+.cogui-gtb-chip.is-you .cogui-gtb-chip-name {
+  color: #eafffb;
+}
+.cogui-gtb-tag {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+.cogui-gtb-tag.is-you,
+.cogui-gtb-tag.is-sit {
+  color: #06251f;
+  background: var(--cogui-accent);
+}
+.cogui-gtb-tag.is-kick {
+  color: #fff;
+  background: #e0533c;
+}
+.cogui-gtb-statusslot {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.cogui-gtb-cog {
+  display: inline-flex;
+  color: var(--cogui-ember);
+  animation: cogui-spin 2.6s linear infinite;
+}
+.cogui-gtb-check {
+  display: inline-flex;
+}
+.cogui-gtb-score {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  color: #9aa0ad;
+  white-space: nowrap;
+  padding-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.cogui-gtb-chip.is-you .cogui-gtb-score {
+  color: var(--cogui-accent);
+}
+.cogui-gtb-right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+}
+.cogui-gtb-comms {
+  position: relative;
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #cfd3dc;
+  background: #15171f;
+  border: 1px solid #262a35;
+  border-radius: 9px;
+  padding: 9px 13px;
+}
+.cogui-gtb-comms:hover {
+  border-color: #3a3f4d;
+}
+.cogui-gtb-comms.is-open {
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--cogui-accent) 40%, transparent);
+}
+.cogui-gtb-comms.is-off {
+  color: #5b6070;
+  background: #101218;
+  border-style: dashed;
+  border-color: #262a35;
+  cursor: not-allowed;
+}
+.cogui-gtb-viewtoggle {
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #cfd3dc;
+  background: #15171f;
+  border: 1px solid #262a35;
+  border-radius: 9px;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+.cogui-gtb-viewtoggle:hover {
+  border-color: #3a3f4d;
+}
+.cogui-gtb-viewtoggle.is-on {
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--cogui-accent) 40%, transparent);
+}
+.cogui-gtb-unread {
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--cogui-ember);
+  color: #1a1205;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 9px;
+}
+.cogui-gtb-auto {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #262a35;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #15171f;
+}
+.cogui-gtb-auto.is-on {
+  border-color: color-mix(in srgb, var(--cogui-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--cogui-accent) 10%, transparent);
+}
+.cogui-gtb-auto-toggle {
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 12px;
+  color: #cfd3dc;
+  background: transparent;
+  border: none;
+  padding: 9px 11px;
+}
+.cogui-gtb-auto.is-on .cogui-gtb-auto-toggle,
+.cogui-gtb-auto.is-on .cogui-gtb-auto-cfg {
+  color: var(--cogui-accent);
+}
+/* An explicit ON/OFF pill so the toggle's state is unmistakable (the switch +
+   accent tint alone read as too subtle): muted when off, accent-filled when on. */
+.cogui-gtb-auto-state {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 6px;
+  border: 1px solid #2a2e3a;
+  background: #1d212b;
+  color: #8a90a0;
+}
+.cogui-gtb-auto.is-on .cogui-gtb-auto-state {
+  border-color: var(--cogui-accent);
+  background: var(--cogui-accent);
+  color: #06251f;
+}
+.cogui-gtb-sw {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid #2a2e3a;
+  background: #1d212b;
+  flex: none;
+}
+.cogui-gtb-auto.is-on .cogui-gtb-sw {
+  border-color: var(--cogui-accent);
+  background: var(--cogui-accent);
+}
+.cogui-gtb-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #8a90a0;
+  transition: left 0.15s;
+}
+.cogui-gtb-auto.is-on .cogui-gtb-knob {
+  left: 17px;
+  background: #06251f;
+}
+.cogui-gtb-auto-cfg {
+  appearance: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  border: none;
+  border-left: 1px solid #262a35;
+  background: transparent;
+  color: #cfd3dc;
+}
+.cogui-gtb-take {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  color: #06251f;
+  background: var(--cogui-accent);
+  border: 1px solid var(--cogui-accent);
+  border-radius: 9px;
+  padding: 9px 14px;
+}
+.cogui-gtb-take.is-picking {
+  color: var(--cogui-accent);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--cogui-accent) 50%, transparent);
+}
+
+/* Floating overlay (feed drawer / autopilot config) anchored over the board. The
+   host console must be position:relative for these to sit below the bar. */
+.cogui-gtb-scrim {
+  position: absolute;
+  inset: 62px 0 0;
+  background: rgba(8, 9, 12, 0.4);
+  z-index: 35;
+}
+.cogui-gtb-overlay {
+  position: absolute;
+  z-index: 36;
+  top: 70px;
+  right: 14px;
+  max-width: calc(100% - 28px);
+  max-height: calc(100% - 84px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- GameScrubberBar (bottom bar) ---- */
+.cogui-sbar {
+  position: relative;
+  z-index: 20;
+  flex: none;
+  background: rgba(15, 17, 23, 0.94);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid #1b1e27;
+}
+.cogui-sbar-ovwrap {
+  padding: 9px 16px 0;
+}
+.cogui-sbar-ov {
+  position: relative;
+  height: 30px;
+  cursor: pointer;
+}
+.cogui-sbar-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+.cogui-sbar-barcol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 1px;
+}
+.cogui-sbar-bar {
+  width: 100%;
+  border-radius: 1px;
+}
+.cogui-sbar-ribbon {
+  width: 100%;
+  height: 4px;
+  opacity: 0.85;
+}
+.cogui-sbar-key {
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(255, 90, 44, 0.5);
+}
+.cogui-sbar-lens {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--cogui-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cogui-accent) 60%, transparent);
+  border-radius: 3px;
+  cursor: grab;
+}
+.cogui-sbar-playhead {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  pointer-events: none;
+}
+.cogui-sbar-railwrap {
+  min-height: 66px;
+}
+.cogui-sbar-chevrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 0;
+}
+.cogui-sbar-ovtoggle {
+  appearance: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: #15171f;
+  border: 1px solid #262a35;
+  color: #9aa0ad;
+  padding: 0;
+}
+.cogui-sbar-ovtoggle:hover {
+  border-color: #3a3f4d;
+}
+.cogui-sbar-rail {
+  display: flex;
+  gap: 4px;
+  padding: 6px 16px 8px 12px;
+  overflow-x: auto;
+}
+.cogui-sbar-turn {
+  flex: 1 0 56px;
+  min-width: 56px;
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #13151c;
+  border: 1px solid #21242e;
+}
+.cogui-sbar-turn:hover {
+  border-color: #3a3f4d;
+}
+.cogui-sbar-turn.is-now {
+  background: color-mix(in srgb, var(--cogui-accent) 10%, transparent);
+  border-color: var(--cogui-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--cogui-accent) 27%, transparent);
+}
+/* The synthetic FINAL tile: the score-panel turn at the end of the rail. */
+.cogui-sbar-final {
+  flex: 0 0 56px;
+  justify-content: space-between;
+  background: color-mix(in srgb, var(--cogui-accent) 7%, #13151c);
+  border-color: color-mix(in srgb, var(--cogui-accent) 35%, #21242e);
+}
+.cogui-sbar-final-label {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--cogui-accent) 80%, #9aa0ad);
+}
+.cogui-sbar-turn-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cogui-sbar-turn-num {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  color: #9aa0ad;
+}
+.cogui-sbar-turn.is-now .cogui-sbar-turn-num {
+  color: #e9ebf1;
+}
+.cogui-sbar-turn-key {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 8px;
+  line-height: 1;
+  color: #ff5a2c;
+}
+.cogui-sbar-turn-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cogui-accent);
+  box-shadow: 0 0 6px var(--cogui-accent);
+}
+.cogui-sbar-pips {
+  display: flex;
+  gap: 2px;
+}
+.cogui-sbar-pip {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+}
+.cogui-sbar-foot {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 9px 16px;
+}
+.cogui-sbar-foot.has-border {
+  border-top: 1px solid #16181f;
+}
+.cogui-sbar-scrubhint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #6b7080;
+}
+.cogui-sbar-key-cap {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #15171f;
+  border: 1px solid #262a35;
+  color: #9aa0ad;
+  font-weight: 700;
+  font-size: 10px;
+}
+.cogui-sbar-phases {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cogui-sbar-phase {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+}
+.cogui-sbar-phase + .cogui-sbar-phase {
+  border-left: 1px solid #21242e;
+  margin-left: 2px;
+}
+.cogui-sbar-pdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a3f4d;
+}
+.cogui-sbar-phase.is-done .cogui-sbar-pdot {
+  background: color-mix(in srgb, var(--cogui-accent) 60%, transparent);
+}
+.cogui-sbar-phase.is-current .cogui-sbar-pdot {
+  background: var(--cogui-accent);
+  box-shadow: 0 0 8px var(--cogui-accent);
+  animation: cogui-pulse 1.6s ease-in-out infinite;
+}
+.cogui-sbar-plabel {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7080;
+}
+.cogui-sbar-phase.is-done .cogui-sbar-plabel {
+  color: #aeb3bf;
+}
+.cogui-sbar-phase.is-current .cogui-sbar-plabel {
+  color: var(--cogui-accent);
+}
+.cogui-sbar-timer {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  padding: 3px 6px;
+  border-radius: 5px;
+}
+.cogui-sbar-aa {
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #9aa0ad;
+  background: none;
+  border: 1px solid #262a35;
+  border-radius: 6px;
+  padding: 6px 9px;
+}
+.cogui-sbar-aa.is-on {
+  color: var(--cogui-accent);
+  border-color: color-mix(in srgb, var(--cogui-accent) 40%, transparent);
+}
+.cogui-sbar-aasw {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid #2a2e3a;
+  background: #1d212b;
+}
+.cogui-sbar-aa.is-on .cogui-sbar-aasw {
+  border-color: var(--cogui-accent);
+  background: var(--cogui-accent);
+}
+.cogui-sbar-aaknob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #8a90a0;
+  transition: left 0.15s;
+}
+.cogui-sbar-aa.is-on .cogui-sbar-aaknob {
+  left: 15px;
+  background: #06251f;
+}
+.cogui-sbar-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-left: 2px;
+}
+.cogui-sbar-rword {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #7c8090;
+}
+.cogui-sbar-rnum {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 0.8;
+  color: #e9ebf1;
+  margin-left: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.cogui-sbar-rmax {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 12px;
+  color: #7c8090;
+}
+
+/* ---- FeedDrawer ---- */
+.cogui-fd {
+  width: 384px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #13151c;
+  border: 1px solid #232733;
+  border-radius: 13px;
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  min-height: 0;
+}
+.cogui-fd-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #21242e;
+  flex: none;
+}
+.cogui-fd-title {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #7c8090;
+}
+.cogui-fd-tabs {
+  display: inline-flex;
+  gap: 3px;
+  background: #0f1117;
+  border: 1px solid #232733;
+  border-radius: 8px;
+  padding: 3px;
+}
+.cogui-fd-tab {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10px;
+  color: #9aa0ad;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.cogui-fd-tab.is-on {
+  color: #06251f;
+  background: var(--cogui-accent);
+}
+.cogui-fd-close {
+  appearance: none;
+  cursor: pointer;
+  font-size: 19px;
+  line-height: 1;
+  color: #7c8090;
+  background: none;
+  border: none;
+  padding: 0 2px;
+}
+.cogui-fd-close:hover {
+  color: var(--cogui-text);
+}
+.cogui-fd-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  min-height: 120px;
+}
+.cogui-fd-empty {
+  color: #6b7080;
+  font-size: 12px;
+}
+.cogui-fd-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cogui-fd-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.cogui-fd-name {
+  font-weight: 700;
+  font-size: 11px;
+}
+.cogui-fd-to {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8090;
+  background: #1a1d26;
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+.cogui-fd-to.is-whisper {
+  color: var(--cogui-ember);
+  background: color-mix(in srgb, var(--cogui-ember) 12%, transparent);
+}
+.cogui-fd-bubble {
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #d2d6de;
+  background: #0f1117;
+  border: 1px solid #21242e;
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.cogui-fd-bubble.is-mine {
+  background: color-mix(in srgb, var(--cogui-accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--cogui-accent) 30%, transparent);
+}
+.cogui-fd-compose {
+  padding: 11px 13px;
+  border-top: 1px solid #21242e;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex: none;
+}
+.cogui-fd-toggle {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10px;
+  color: #9aa0ad;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 7px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+.cogui-fd-toggle.is-whisper {
+  color: var(--cogui-ember);
+  background: color-mix(in srgb, var(--cogui-ember) 12%, transparent);
+  border-color: color-mix(in srgb, var(--cogui-ember) 40%, transparent);
+}
+.cogui-fd-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  font-size: 12px;
+  color: #e6e8ee;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+.cogui-fd-send {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  color: #06251f;
+  background: var(--cogui-accent);
+  border: none;
+  border-radius: 8px;
+  padding: 9px 13px;
+}
+
+/* ---- AutopilotConfig (popover; expands to a console) ---- */
+.cogui-apc {
+  width: 340px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #13151c;
+  border: 1px solid #232733;
+  border-radius: 13px;
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  min-height: 0;
+  transition: width 0.18s ease;
+}
+.cogui-apc.is-expanded {
+  width: 620px;
+}
+.cogui-apc-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #21242e;
+  flex: none;
+}
+.cogui-apc-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  color: var(--cogui-accent);
+}
+.cogui-apc-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #e9ebf1;
+}
+.cogui-apc-state {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 10px;
+  color: #9aa0ad;
+}
+.cogui-apc-state.is-on {
+  color: var(--cogui-accent);
+}
+.cogui-apc-expand,
+.cogui-apc-close {
+  appearance: none;
+  cursor: pointer;
+}
+.cogui-apc-expand {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  color: #aeb3bf;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 7px;
+}
+.cogui-apc-expand:hover {
+  color: var(--cogui-text);
+  border-color: #3a3f4d;
+}
+.cogui-apc-close {
+  font-size: 19px;
+  line-height: 1;
+  color: #7c8090;
+  background: none;
+  border: none;
+  padding: 0 2px;
+}
+.cogui-apc-close:hover {
+  color: var(--cogui-text);
+}
+.cogui-apc-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cogui-apc-settings {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  flex: 1 1 auto;
+}
+.cogui-apc.is-expanded .cogui-apc-settings {
+  flex: 0 0 252px;
+  border-right: 1px solid #21242e;
+}
+.cogui-apc-label {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7c8090;
+  margin-bottom: 8px;
+}
+.cogui-apc-labelrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cogui-apc-labelrow .cogui-apc-label {
+  margin-bottom: 0;
+}
+.cogui-apc-select {
+  width: 100%;
+  font-weight: 600;
+  font-size: 12px;
+  color: #e6e8ee;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.cogui-apc-guidance {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e6e8ee;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.cogui-apc-save {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.cogui-apc-expandbtn {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cogui-accent) 40%, transparent);
+  border-radius: 9px;
+  padding: 11px;
+}
+.cogui-apc-stepbtn {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  font-weight: 700;
+  font-size: 12px;
+  color: #d6d9e0;
+  background: #1a1d26;
+  border: 1px solid #2a2e3a;
+  border-radius: 9px;
+  padding: 11px;
+}
+.cogui-apc-console {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cogui-apc-consolehead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #21242e;
+  flex: none;
+}
+.cogui-apc-tabs {
+  display: inline-flex;
+  gap: 3px;
+  background: #0f1117;
+  border: 1px solid #232733;
+  border-radius: 8px;
+  padding: 3px;
+}
+.cogui-apc-tab {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  color: #9aa0ad;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 11px;
+}
+.cogui-apc-tab.is-on {
+  color: #06251f;
+  background: var(--cogui-accent);
+}
+.cogui-apc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.cogui-apc-entry {
+  border: 1px solid #21242e;
+  border-radius: 10px;
+  background: #0f1117;
+  overflow: hidden;
+}
+.cogui-apc-entry-head {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+}
+.cogui-apc-turn {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  padding: 4px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.cogui-apc-ephase {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8090;
+}
+.cogui-apc-move {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #e6e8ee;
+  min-width: 0;
+}
+.cogui-apc-caret {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+  color: #7c8090;
+  flex: none;
+}
+.cogui-apc-detail {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.cogui-apc-sublabel {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7080;
+  margin-bottom: 5px;
+}
+.cogui-apc-obs {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #aeb3bf;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Observations can be thousands of chars; cap + scroll so one turn doesn't
+     swamp the trace and the whole log stays navigable. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+.cogui-apc-nodecision {
+  font-style: italic;
+  color: #7c8090;
+}
+.cogui-apc-dec {
+  border-left: 2px solid var(--cogui-accent);
+  padding-left: 9px;
+}
+.cogui-apc-dec .cogui-apc-sublabel {
+  color: var(--cogui-accent);
+}
+.cogui-apc-dectext {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #d2d6de;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.cogui-apc-libhint {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #7c8090;
+  margin-bottom: 1px;
+}
+.cogui-apc-librow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: #0f1117;
+  border: 1px solid #21242e;
+}
+.cogui-apc-librow.is-active {
+  background: color-mix(in srgb, var(--cogui-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--cogui-accent) 45%, transparent);
+}
+.cogui-apc-libmain {
+  flex: 1;
+  min-width: 0;
+}
+.cogui-apc-libtop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+.cogui-apc-libname {
+  font-weight: 700;
+  font-size: 12px;
+  color: #e6e8ee;
+}
+.cogui-apc-librow.is-active .cogui-apc-libname {
+  color: var(--cogui-accent);
+}
+.cogui-apc-libactive {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: #06251f;
+  background: var(--cogui-accent);
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+.cogui-apc-libtext {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #9aa0ad;
+}
+.cogui-apc-libbtns {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: none;
+}
+.cogui-apc-use,
+.cogui-apc-del {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10px;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.cogui-apc-use {
+  color: #d6d9e0;
+  background: #1a1d26;
+  border: 1px solid #2a2e3a;
+}
+.cogui-apc-del {
+  color: #8a90a0;
+  background: transparent;
+  border: 1px solid #2a2e3a;
+}
+
+/* Per-turn detail slot in the scrubber rail (e.g. cogherence's leader heart +
+   territory bar). Optional — supplied via GameScrubberBar's renderRailExtra. */
+.cogui-sbar-railextra {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---- FeedView (full-bleed "Game feed" — global, scrubber-driven history) ---- */
+.cogui-fv {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  background: #0b0c11;
+}
+.cogui-fv-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid #1b1e27;
+  flex: none;
+}
+.cogui-fv-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cogui-accent) 14%, transparent);
+  color: var(--cogui-accent);
+  flex: none;
+}
+.cogui-fv-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cogui-fv-title {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1;
+  color: #e9ebf1;
+}
+.cogui-fv-sub {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  color: #7c8090;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cogui-fv-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: #0f1117;
+  border: 1px solid var(--cogui-border);
+  flex: none;
+}
+.cogui-fv-pilldot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.cogui-fv-pilltext {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.cogui-fv-pillmax {
+  color: #5b6070;
+}
+.cogui-fv-jump {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: #06251f;
+  background: var(--cogui-accent);
+  border: none;
+  border-radius: 5px;
+  padding: 5px 7px;
+}
+.cogui-fv-filters {
+  display: inline-flex;
+  gap: 3px;
+  background: #0f1117;
+  border: 1px solid #232733;
+  border-radius: 9px;
+  padding: 3px;
+  flex: none;
+}
+.cogui-fv-filter {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 10px;
+  color: #9aa0ad;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 11px;
+}
+.cogui-fv-filter.is-on {
+  color: #06251f;
+  background: var(--cogui-accent);
+}
+.cogui-fv-close {
+  appearance: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #9aa0ad;
+  background: #0f1117;
+  border: 1px solid #232733;
+  flex: none;
+}
+.cogui-fv-close:hover {
+  color: var(--cogui-text);
+}
+.cogui-fv-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cogui-fv-inner {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 2px 0 26px;
+}
+.cogui-fv-empty {
+  color: #6b7080;
+  font-size: 12px;
+  padding: 24px 20px;
+}
+.cogui-fv-group {
+  position: relative;
+  border-left: 2px solid transparent;
+  margin-left: 2px;
+}
+.cogui-fv-turnhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 20px 9px;
+  background: linear-gradient(#0b0c11 80%, rgba(11, 12, 17, 0));
+}
+.cogui-fv-turnnum {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.cogui-fv-pips {
+  display: flex;
+  gap: 3px;
+}
+.cogui-fv-pip {
+  display: block;
+  width: 15px;
+  height: 4px;
+  border-radius: 2px;
+}
+.cogui-fv-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  color: var(--cogui-accent);
+}
+.cogui-fv-livedot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cogui-accent);
+  box-shadow: 0 0 6px var(--cogui-accent);
+  animation: cogui-pulse 1.4s ease-in-out infinite;
+}
+.cogui-fv-viewing {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  color: #06251f;
+  background: var(--cogui-accent);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.cogui-fv-summary {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  color: #5b6070;
+}
+.cogui-fv-events {
+  padding: 2px 20px 12px;
+}
+.cogui-fv-ev {
+  display: flex;
+  gap: 13px;
+}
+.cogui-fv-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: 22px;
+}
+.cogui-fv-node {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid;
+  flex: none;
+}
+.cogui-fv-connector {
+  flex: 1;
+  width: 2px;
+  background: #1e212b;
+  margin: 3px 0;
+}
+.cogui-fv-evbody {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+.cogui-fv-evline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cogui-fv-actor {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.cogui-fv-text {
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d2d6de;
+}
+.cogui-fv-delta {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 800;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--cogui-accent);
+  background: color-mix(in srgb, var(--cogui-accent) 12%, transparent);
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+.cogui-fv-detail {
+  margin-top: 6px;
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #9aa0ad;
+  border-left: 2px solid color-mix(in srgb, var(--cogui-accent) 50%, transparent);
+  padding-left: 9px;
+}
+.cogui-fv-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.cogui-fv-tag {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.cogui-fv-phase {
+  font-family: var(--cogui-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: #5b6070;
+}
+
+/* ===========================================================================
+   NamePrompt — the shared "pick a name" modal. Fixed to the viewport so it
+   gates the whole page regardless of where it mounts (the portal's app box or
+   a game console). Themed off the host's --accent/--panel/--border/--text/
+   --muted tokens, with cogui fallbacks.
+   =========================================================================== */
+.cogui-nameprompt-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 12, 0.72);
+  backdrop-filter: blur(3px);
+  z-index: 60;
+}
+.cogui-nameprompt {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 61;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  background: var(--panel, #14161d);
+  border: 1px solid var(--accent, #3ce0c0);
+  border-radius: 16px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  font-family: var(--cogui-font, system-ui, sans-serif);
+}
+.cogui-nameprompt-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border, #2a2e3a);
+}
+.cogui-nameprompt-title {
+  font: 700 15px/1 system-ui;
+  color: var(--text, #e6e8ee);
+}
+.cogui-nameprompt-sub {
+  font: 600 11px/1 var(--cogui-mono, ui-monospace, monospace);
+  color: var(--muted, #8a90a0);
+  margin-top: 5px;
+}
+.cogui-nameprompt-body {
+  padding: 14px 18px;
+}
+.cogui-nameprompt-input {
+  appearance: none;
+  width: 100%;
+  background: var(--panel, #14161d);
+  border: 1px solid var(--accent, #3ce0c0);
+  border-radius: 10px;
+  padding: 11px 13px;
+  font: 600 14px/1 system-ui;
+  letter-spacing: 0.01em;
+  color: var(--text, #e6e8ee);
+  outline: none;
+}
+.cogui-nameprompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.cogui-nameprompt-dice {
+  appearance: none;
+  cursor: pointer;
+  font: 600 12px/1 system-ui;
+  color: var(--muted, #8a90a0);
+  background: none;
+  border: none;
+  padding: 6px 4px;
+}
+.cogui-nameprompt-dice:hover {
+  color: var(--text, #e6e8ee);
+}
+.cogui-nameprompt-go {
+  appearance: none;
+  cursor: pointer;
+  font: 600 13px/1 system-ui;
+  color: #0e0f14;
+  background: var(--accent, #3ce0c0);
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+}
+.cogui-nameprompt-go:hover {
+  filter: brightness(1.08);
+}
+.cogui-nameprompt-go:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
+}
+
+/* FinalScorePanel — the shared end-of-game score panel shown on the synthetic
+   FINAL turn. NOT a modal: it fills the game's board region (a relative <main>),
+   leaving the top bar + scrubber visible so the operator scrubs in/out of it.
+   Themed via the cogui tokens each game already sets (--cogui-accent). */
+.cogui-fs {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(6, 8, 14, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.cogui-fs-panel {
+  width: 620px;
+  max-width: 94vw;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #13151c;
+  border: 1px solid #2a2e3a;
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cogui-fs-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.cogui-fs-title {
+  margin: 0;
+  flex: 1;
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cogui-accent, #e9ebf1);
+}
+.cogui-fs-summary {
+  margin: 0;
+  font-size: 14px;
+  color: #aeb3bf;
+}
+.cogui-fs-body {
+  display: flex;
+  flex-direction: column;
+}
+.cogui-fs-again {
+  align-self: center;
+  margin-top: 4px;
+  background: var(--cogui-accent, #3ce0c0);
+  color: #0a0f0d;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 26px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}

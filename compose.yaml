@@ -1,0 +1,8 @@
+services:
+  territory:
+    image: territory-coworld:latest
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host

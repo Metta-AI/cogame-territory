@@ -1,0 +1,30 @@
+{
+  "note": "SHA-256 of every file under packages/ui/src — the shared chrome Territory reuses unmodified. Regenerate with `pnpm ui-manifest`; a diff here means the chrome was edited instead of appended to, which is the cogame-gridlock failure.",
+  "base": "Metta-AI/coworld-cogherence",
+  "files": {
+    "packages/ui/src/AutoAdvanceControl.tsx": "e6efae125f804691aab142497e451a3495f9a047af6dafaa26d6cef680161fb3",
+    "packages/ui/src/AutoAdvanceSettings.tsx": "381ccaa006f807416a88f2004d56bec2c28afa5c12080ce35757f6e010cd3569",
+    "packages/ui/src/AutopilotConfig.tsx": "f6b281756273b2f80ac5e20b4ecac1864c3c766140a2f0d152b8c1c2ca2e4a09",
+    "packages/ui/src/AutopilotPanel.tsx": "82b0a4bf7e0235271320115e99729094407dcb787d8ccce427699ec4c2ad4ad2",
+    "packages/ui/src/EventFeed.tsx": "20c7634fe0d77800141c9f46d5f2ba3f7675d40c01f8ec3e1321196454f67865",
+    "packages/ui/src/FeedDrawer.tsx": "f3fea5b8401e1d9a1f7afba8d27e6e531f6252704d2412997dd61c2f84805199",
+    "packages/ui/src/FeedView.tsx": "87213e32eef2e21b2d17948daab19b1828b9f3e6206e64e77aee22ee97726893",
+    "packages/ui/src/FinalScorePanel.tsx": "74787e76431d61346c5fb6eb89afb97a33f9374ed2940d0da34a28b0823ddb08",
+    "packages/ui/src/GameScrubberBar.tsx": "dfdc14ce2c6c113fec7f184146afa694390149985647d32049908e45bfb06e00",
+    "packages/ui/src/GameTopBar.tsx": "2a1b195a6535216de8f5b2ea39afbd0acb2d0be49ac9b22db635c878051f513c",
+    "packages/ui/src/Lobby.tsx": "e49f4d0c24aadfb9577ddd28f517206312bd850adaa5fc06b5176c51a72363db",
+    "packages/ui/src/NamePrompt.tsx": "ed2108d0824360e2935516c22d0fa559b74c284faf55cf79902e23d188f69fec",
+    "packages/ui/src/PhaseIndicator.tsx": "bd9093ec58a8ac86332536eb6c247d70238863a0480da6a1b8529534a78af2e4",
+    "packages/ui/src/PlayerRoster.tsx": "eea812d652752210220530eabbbb733a7ee3a024cc977413c25770b937158265",
+    "packages/ui/src/Scrubber.tsx": "3caf6c783e22d87c8bca4e7704f022940cddd4059af759f7500c654c1eb69d92",
+    "packages/ui/src/SeatBar.tsx": "df0d5963549b0ef2e5055159e1215ac8a2c1350bdadde5dbdde0c8f7d3a96c4b",
+    "packages/ui/src/SeatStatusBadge.tsx": "aab4eba75c1424f5296ba72742a431c59da092517a3b81300d0c2992d34aada3",
+    "packages/ui/src/TopBar.tsx": "f89eebc708e15edd6043bc282af4a3a618e199e197207f7d430ea8e554e7f23c",
+    "packages/ui/src/index.ts": "e62d76cbc44a7f5fdaf4f8b78306ae870de93e9c80fdbc7e78728d2ece55b861",
+    "packages/ui/src/replay.ts": "80aa271d21bc1dd5c9e34dcf761309ee1d2d1b1872862f01dc4fb570566c3d8c",
+    "packages/ui/src/styles.css": "321c0ef3cee1dd1830f3cd8940ef14820c341b0d5e411afb4dbdd748d3f9419e",
+    "packages/ui/src/useFeedStore.ts": "6e5f59ed0e371d63059218f870aded5666cb424d107e8bbbcb5834d328aaab31",
+    "packages/ui/src/viewerName.ts": "afd6f5906db28a199649b5f0df710e36513c8532d46e2a8f63dba137a5c08abe",
+    "packages/ui/src/wsUrl.ts": "0aa18492748b2c33d6d18658d67454512de89833273091555550c766923ba89e"
+  }
+}

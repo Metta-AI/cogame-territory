@@ -1,0 +1,16 @@
+{
+  "name": "@cogweb/llm",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@cogweb/protocol": "workspace:*",
+    "@cogweb/core": "workspace:*",
+    "@aws-sdk/client-bedrock": "3.1011.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1011.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  }
+}

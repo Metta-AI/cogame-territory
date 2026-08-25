@@ -1,0 +1,35 @@
+[
+  {
+    "name": "territory-steward",
+    "run": "/bin/territory-player",
+    "env": {
+      "PLAYER_PROMPT": "You are a steward. Income compounds and destroyed walls never come back, so your default is to claim, dry, and hold. Propose explicit borders in public and honour them; a border you keep is worth more than a wall you take. Raze only (a) in direct retaliation against a seat that razed your ground, or (b) after turn 14, to cash out ground you are about to lose. Never open a war you cannot end in two turns. Name the seats you trust and say what you will do next turn — then do it.",
+      "USE_BEDROCK": "true",
+      "BEDROCK_MODEL": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    }
+  },
+  {
+    "name": "territory-condottiere",
+    "run": "/bin/territory-player",
+    "env": {
+      "PLAYER_PROMPT": "You are a condottiere. Paint is leverage and a raze is a bill you can present to someone else. Claim the richest walls you can reach, then use the threat of razing to sell protection: offer a seat safety in exchange for paint transfers or a border, and take payment before you deliver. Strike home rings only when a second strike next turn is affordable and someone else has already staggered the target. Keep one foothold inside two tiles of the leader at all times, and tell them so.",
+      "USE_BEDROCK": "true",
+      "BEDROCK_MODEL": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    },
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
+  },
+  {
+    "name": "territory-homesteader",
+    "run": "/bin/territory-player",
+    "env": {
+      "PLAYER_SCRIPTED": "homesteader"
+    }
+  },
+  {
+    "name": "territory-raider",
+    "run": "/bin/territory-player",
+    "env": {
+      "PLAYER_SCRIPTED": "raider"
+    }
+  }
+]

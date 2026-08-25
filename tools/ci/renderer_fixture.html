@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      // Same <base>-recovery script as index.html: this page is emitted into the
+      // static bundle at tools/ci/renderer_fixture.html, two directories deep, so
+      // vite's relative "../../assets/…" links need the serving root pinned.
+      (function () {
+        var prefix = location.pathname
+          .replace(/\/+$/, "")
+          .replace(/\/[^/]+\.html$/, "")
+          .replace(/\/tools\/ci$/, "");
+        var base = document.createElement("base");
+        base.href = prefix + "/";
+        document.head.appendChild(base);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Territory · renderer fixture</title>
+  </head>
+  <body>
+    <div id="fixture-root"></div>
+    <script type="module" src="/src/client/fixture/main.tsx"></script>
+  </body>
+</html>
