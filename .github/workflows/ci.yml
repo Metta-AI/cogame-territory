@@ -242,6 +242,39 @@ jobs:
           echo "bundle OK:"
           find "${out}" -type f -printf '  %p (%s bytes)\n'
 
+      - name: Assert the REPLAY PAGE carries the sim it re-derives with
+        # Item 2: the page must derive its display by replaying the recorded
+        # EVENTS through the sim (src/game/rederive.ts, imported by App.tsx), not
+        # by reading the recorded snapshots back. That import is what puts the
+        # engine's rule modules in index.html's OWN module graph — the renderer
+        # fixture chunk carrying them proves nothing about the replay page. If a
+        # refactor drops the import, this sentinel leaves the graph and CI fails
+        # instead of shipping a viewer that only replays a parallel recording.
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, sys
+          out = pathlib.Path("build/static-replay-viewer")
+          sentinel = "rubble is never claimable again"  # rejectionReason(), src/shared/engine/resolve.ts
+          queue = re.findall(r"assets/[A-Za-z0-9_.\-]+\.js", (out / "index.html").read_text())
+          seen, found = set(), False
+          while queue:
+              rel = queue.pop()
+              if rel in seen:
+                  continue
+              seen.add(rel)
+              path = out / rel
+              if not path.exists():
+                  continue
+              text = path.read_text(errors="replace")
+              found = found or sentinel in text
+              queue += ["assets/" + m for m in re.findall(r"[\"'](?:\./)?([A-Za-z0-9_.\-]+\.js)[\"']", text)]
+          print(f"index.html reaches {len(seen)} chunk(s): {sorted(seen)}")
+          if not found:
+              sys.exit("::error::the engine is NOT in the replay page's module graph — the page is not re-deriving frames")
+          print("re-derivation OK: the sim is in the replay page's module graph")
+          PY
+
       - name: Download the smoke replay
         uses: actions/download-artifact@v4
         with:

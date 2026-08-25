@@ -21,9 +21,11 @@ import { runCoworldGame } from "../coworld/server";
 import { territoryModule } from "./game";
 import type { TerritoryDecision, TerritorySeamState, TerritoryView } from "./game";
 import type { TerritoryObservation } from "./redact";
+import { rederiveReplay } from "./rederive";
 import { scriptedDecide } from "./scripted";
 import { EVENT_KINDS } from "../shared/engine/log";
 import { MAX_TURNS, SEATS } from "../shared/engine/constants";
+import { gameSnapshotSchema } from "../shared/protocol";
 import { TerritoryReplay } from "../shared/replay";
 import { territoryResultsSchema } from "../coworld/results";
 
@@ -164,6 +166,29 @@ describe("the recorded replay", () => {
     // The endcard is there exactly once, so the final panel needs no derivation.
     const endcards = env.frames.filter((f) => f.type === "event" && f.event.kind === "endcard");
     expect(endcards).toHaveLength(1);
+  });
+
+  it("RE-DERIVES every recorded frame from the recorded events, frame by frame", () => {
+    // Item 2's property, over the bytes a real episode wrote: feed the recorded
+    // EVENTS (the seed in the first snapshot + every seat's recorded submission in
+    // its `actPrompt` frame) back through the sim and reproduce the recorded
+    // per-turn state exactly. This is the same function `src/client/App.tsx` runs
+    // in the browser, so what the viewer draws is this re-derivation, not the
+    // recorded snapshots it is checked against.
+    const env = TerritoryReplay.parse(replay);
+    const derived = rederiveReplay(env.frames);
+    expect(derived.mismatch).toBeNull();
+    // Turns 1..18 plus the terminal snapshot at turn 19, every one reproduced.
+    expect(derived.snapshots).toHaveLength(MAX_TURNS + 1);
+    expect(derived.verified).toBe(MAX_TURNS + 1);
+    // And the re-derivation is a real re-simulation, not a copy: it never reads a
+    // recorded snapshot except to compare, so the states it produced are equal
+    // frame by frame to the recorded ones.
+    const recorded = new Map<number, unknown>();
+    for (const f of env.frames) if (f.type === "snapshot") recorded.set(f.snapshot.turn, f.snapshot.state);
+    for (const snap of derived.snapshots) {
+      expect(gameSnapshotSchema.parse(recorded.get(snap.turn))).toEqual(gameSnapshotSchema.parse(snap));
+    }
   });
 
   it("every snapshot carries the whole board and every seat's public state", () => {

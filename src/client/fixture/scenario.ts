@@ -16,6 +16,7 @@ import { toSnapshot, type GameSnapshot } from "../../shared/snapshot";
 import type { ClientTurnEvent } from "../../shared/protocol";
 import type { Message } from "../../shared/messages";
 import type { StampedEvent } from "../net/feed";
+import type { ServerMessage as CogwebMessage } from "@cogweb/protocol";
 
 /** A talk line at exactly the cap: CJK + emoji, so a byte-boundary truncation or
  *  a fixed-width row would be caught immediately. */
@@ -82,4 +83,45 @@ export function playScenario(seed = 7, turns = 7): Scenario {
     }
   }
   return { state, snapshot: toSnapshot(state), events, messages };
+}
+
+/**
+ * The same real scripted game, recorded as the REPLAY FRAMES a host would write:
+ * one `snapshot` frame per turn plus each seat's `actPrompt` frame carrying the
+ * submission it played. `src/game/rederive.ts` reads exactly these two frame
+ * kinds, so this is the smallest honest input for testing the viewer's
+ * re-derivation path without standing up a host.
+ */
+export function playRecordedFrames(seed = 7, turns = 5): CogwebMessage[] {
+  const snapshotFrame = (s: GameState): CogwebMessage => ({
+    type: "snapshot",
+    snapshot: { turn: s.turn, generation: 0, state: toSnapshot(s) },
+  });
+  let state = newGame(seed, "open", turns);
+  const frames: CogwebMessage[] = [snapshotFrame(state)];
+  for (let t = 0; t < turns; t++) {
+    const turn = state.turn;
+    const submissions: Record<number, Submission> = {};
+    for (const seat of state.cogOrder) {
+      if (state.cogs[seat]!.life === "eliminated") continue;
+      const view = observe(state, seat);
+      const decision = seat % 3 === 1 ? raider(view) : homesteader(view);
+      submissions[seat] = decision;
+      frames.push({
+        type: "actPrompt",
+        actPrompt: {
+          turn,
+          seat,
+          phase: null,
+          usedFallback: false,
+          model: null,
+          attempts: [{ prompt: JSON.stringify(view), response: JSON.stringify(decision), error: null }],
+        },
+      });
+    }
+    state = stepTurn(state, submissions);
+    frames.push(snapshotFrame(state));
+    if (state.settled !== null) break;
+  }
+  return frames;
 }

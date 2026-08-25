@@ -10,9 +10,10 @@
 //  * NO ALIAS LEAK: `redact(state, seat)`, stringified, contains no string from
 //    `config.players[].name`.
 import React from "react";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { App } from "./App";
 import { HexBoard } from "./HexBoard";
 import { ScoreBug } from "./ui/ScoreBug";
 import { WarLedger } from "./ui/WarLedger";
@@ -20,16 +21,18 @@ import { FinalScores } from "./ui/FinalScores";
 import { BoardPanel } from "./ui/BoardPanel";
 import { Channels } from "./cg/panels";
 import { setPolicyNames } from "./colors";
-import { FIXTURE_POLICY_NAMES, fullCapLine, playScenario } from "./fixture/scenario";
+import { FIXTURE_POLICY_NAMES, fullCapLine, playRecordedFrames, playScenario } from "./fixture/scenario";
 import { endcardAt, lastResolvedTurn, warsStarted } from "./cg/derive";
 import { GameScrubberBar } from "@cogweb/ui";
 import { observe } from "../game/redact";
 import { territoryGame } from "../game/game";
+import { rederiveReplay } from "../game/rederive";
 import { ALIASES, MAX_SAY_LEN, SEATS } from "../shared/engine/constants";
 import { newGame, stepTurn } from "../shared/engine/game";
 import { legalRazeTargets } from "../shared/engine/orders";
 import { homeRing } from "../shared/engine/board";
 import type { GameState } from "../shared/engine/types";
+import type { GameSnapshot } from "../shared/snapshot";
 import { runeLength } from "../shared/engine/text";
 
 afterEach(cleanup);
@@ -233,5 +236,43 @@ describe("NO ALIAS LEAK", () => {
     }
     expect(legalRazeTargets(s, 0).length).toBeGreaterThan(0);
     expect(homeRing(0)).toHaveLength(7);
+  });
+});
+
+describe("the replay page RE-DERIVES what it draws", () => {
+  it("draws the re-simulated frames rather than the recorded snapshots", async () => {
+    const frames = playRecordedFrames(7, 4);
+    // TAMPER every recorded snapshot. A page that draws the RECORDING shows 999;
+    // a page that replays the recorded events through the sim shows the engine's
+    // own numbers and reports the divergence in `data-replay-rederived`.
+    const tampered = frames.map((f) =>
+      f.type === "snapshot"
+        ? {
+            ...f,
+            snapshot: {
+              ...f.snapshot,
+              state: {
+                ...(f.snapshot.state as GameSnapshot),
+                cogs: (f.snapshot.state as GameSnapshot).cogs.map((c) => ({ ...c, banked: 999 })),
+              },
+            },
+          }
+        : f,
+    );
+    const { container } = render(<App replay={{ frames: tampered as never }} />);
+    await waitFor(() => expect(document.documentElement.dataset.replayRederived).toBe("mismatch"));
+    const scores = Array.from(container.querySelectorAll(".plate-score")).map((e) => e.textContent);
+    expect(scores).toHaveLength(SEATS);
+    expect(scores).not.toContain("999");
+  });
+
+  it("reports every frame reproduced for an untampered recording", async () => {
+    delete document.documentElement.dataset.replayRederived;
+    const frames = playRecordedFrames(7, 4);
+    render(<App replay={{ frames: frames as never }} />);
+    await waitFor(() => expect(document.documentElement.dataset.replayRederived).toBe("true"));
+    // The engine reproduced every recorded frame from the recorded events alone.
+    expect(rederiveReplay(frames).mismatch).toBeNull();
+    expect(rederiveReplay(frames).verified).toBe(5);
   });
 });

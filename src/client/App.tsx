@@ -17,12 +17,23 @@
 // bridge `{type:"ready"}` — posting `ready` before the attribute lets the
 // softmax.com embed sample an unpainted shell (chorus 3c11c953). On failure it
 // sets `data-replay-error` and posts `{type:"error"}`.
+//
+// REPLAY MODE RE-DERIVES. In replay mode the page does not draw the recorded
+// snapshots: it replays the recorded EVENTS through the same sim the host ran
+// (`rederiveReplay`, the engine compiled into THIS bundle by vite) and draws the
+// re-derivation, cross-checking it frame by frame against the recorded snapshots
+// at load time. `data-replay-rederived` reports the outcome — `"true"` every frame
+// reproduced, `"mismatch"` the re-derivation stands but a frame differed (worth
+// investigating; the state drawn is still the sim's), `"false"` the recording is
+// not re-derivable (no `actPrompt` frames) and the recorded snapshots stand.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "@cogweb/ui/styles.css";
 import "./styles.css";
 import { GameTopBar, GameScrubberBar, loadReplayFrames } from "@cogweb/ui";
 import type { GameTopBarPlayer } from "@cogweb/ui";
+import type { ServerMessage as CogwebMessage } from "@cogweb/protocol";
 import type { Replay } from "../shared/replay";
+import { rederiveReplay } from "../game/rederive";
 import { applyFrame, connectLiveFeed, emptyStore, type FeedStore } from "./net/feed";
 import { makeCogwebDecoder } from "./net/cogweb-feed";
 import { makeWorldSocket } from "./net/world-socket";
@@ -78,6 +89,31 @@ function signalError(message: string): void {
   }
 }
 
+/**
+ * Replay the recorded events through the sim and DRAW THE RE-DERIVATION: the
+ * store's snapshot timeline is replaced by the states the engine reproduced, so
+ * every panel reads a re-simulated frame rather than a recorded one. Sets (and
+ * returns) `data-replay-rederived` — see the header. Never throws: a recording
+ * this build cannot re-derive keeps the recorded frames and says so.
+ */
+function adoptRederivation(store: FeedStore, frames: readonly CogwebMessage[]): string {
+  const outcome = ((): string => {
+    let derived;
+    try {
+      derived = rederiveReplay(frames);
+    } catch {
+      return "false";
+    }
+    if (derived.snapshots.length === 0 || derived.snapshots.length !== store.snapshots.length) return "false";
+    store.snapshots = derived.snapshots;
+    return derived.mismatch === null ? "true" : "mismatch";
+  })();
+  // Reported the moment it is known (a load-time fact, not a paint-time one), so
+  // a harness can read it without waiting on the first frame.
+  if (typeof document !== "undefined") document.documentElement.dataset.replayRederived = outcome;
+  return outcome;
+}
+
 /** The per-turn rail detail: a stacked territory share bar, a ✖N destruction
  *  count and a ☠ on any turn with an elimination. Each beat carries the CSS class
  *  for its kind (`.beat-raze` / `.beat-elim` / `.beat-smear` / `.beat-quiet`). */
@@ -114,6 +150,13 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
       return s;
     })(),
   );
+  // Once, on the first render: an injected replay is re-derived exactly like a
+  // fetched one (a `useRef` argument would re-run this on every render).
+  const rederived = useRef(false);
+  if (injected && !rederived.current) {
+    rederived.current = true;
+    adoptRederivation(storeRef.current, injected.frames);
+  }
   const [, setTick] = useState(0);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const [index, setIndex] = useState(0);
@@ -134,6 +177,8 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
         if (abort.signal.aborted) return;
         const decode = makeCogwebDecoder();
         for (const frame of frames) for (const message of decode(frame)) applyFrame(storeRef.current, message);
+        // Draw the re-derivation, not the recording.
+        adoptRederivation(storeRef.current, frames);
         rerender();
       },
       (reason: unknown) => {
