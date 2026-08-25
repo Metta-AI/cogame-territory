@@ -4,7 +4,28 @@
    only ever gets poorer. Paint is light; a raze is a scar. Inherited from
    coworld-cogherence's console and recoloured to Territory's vocabulary. */
 
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+/* THE PAGE CONTACTS NOTHING BUT S3. The two families are SELF-HOSTED here (the
+   Google-Fonts `@import` this file inherited from coworld-cogherence was a second
+   origin the hosted static bundle would have fetched at runtime, and it decided
+   the metrics the renderer fixture measures). Both files are the `latin`-subset
+   VARIABLE woff2 Google Fonts serves for weight 400-700 — vite resolves the
+   relative url() into the bundle, so they are served from the same prefix as the
+   page. Non-latin text (the CJK + emoji talk lines) falls through to the system
+   stack in --f-ui / --f-mono exactly as before. */
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./fonts/space-grotesk-latin-var.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-latin-var.woff2") format("woff2");
+}
 
 :root {
   /* surfaces */
