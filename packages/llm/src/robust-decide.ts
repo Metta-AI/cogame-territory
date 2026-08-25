@@ -7,9 +7,11 @@
 // the autopilot transcript surfaced in the UI.
 //
 // The catch here is legitimate control flow: catching a validation/parse
-// rejection to re-prompt, falling back to baseline on exhaustion, and treating a
-// terminal no-credentials transport error as an immediate baseline (re-prompting
-// is futile — there is no model to reach). Other transport errors still surface.
+// rejection to re-prompt, catching a TRANSPORT failure (throttle, socket reset,
+// 5xx, request timeout) to retry it the same way, falling back to baseline on
+// exhaustion, and treating a terminal no-credentials transport error as an
+// immediate baseline (re-prompting is futile — there is no model to reach). No
+// failure escapes this function: the caller always gets a decision.
 import type { ActAttempt } from "@cogweb/protocol";
 import { isCredentialsUnavailable } from "./bedrock.js";
 import type { BedrockLlmClient, ConverseMessage, ToolSpec } from "./bedrock.js";
@@ -72,9 +74,18 @@ export async function robustDecide<Decision>(opts: RobustDecideOpts<Decision>): 
     } catch (err) {
       // No credentials (offline cert): terminal and unrecoverable — retrying just
       // re-fails. Record it and play baseline now so the turn resolves instantly.
-      if (!isCredentialsUnavailable(err)) throw err; // throttle/timeout etc. still surface
+      if (isCredentialsUnavailable(err)) {
+        opts.recordAttempt({ prompt, response: "", error: err instanceof Error ? err.message : String(err) });
+        return opts.baseline();
+      }
+      // ANY OTHER TRANSPORT FAILURE — throttle, socket reset, 5xx, request timeout
+      // — is transient, so it is treated exactly like a rejected reply: record the
+      // attempt and go round the loop once more; when the attempts are spent the
+      // loop falls out to `baseline()` below. Rethrowing here (the old behaviour)
+      // propagated out of the player process, so a single throttle cost the seat
+      // the rest of the episode instead of degrading it to its scripted move.
       opts.recordAttempt({ prompt, response: "", error: err instanceof Error ? err.message : String(err) });
-      return opts.baseline();
+      continue;
     }
     const response = opts.tool ? JSON.stringify(reply.toolInput ?? null) : reply.text;
 
