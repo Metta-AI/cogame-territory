@@ -11,6 +11,12 @@
 // the tile hover card) mounts INSIDE `.cg-stage`, never `position: fixed` at the
 // shell level.
 //
+// THE TRANSPORT (recordings only, and both shipped shells render THIS component, so
+// index.html and index-agent.html get it alike): a play/pause toggle, Space bound on
+// the document as the same toggle, and 0.5× / 1× / 2× speed chips that divide the
+// per-snapshot dwell. There is no in-repo iframe shell to forward Space through — the
+// board page IS the framed document, and it hears the key itself once focused.
+//
 // THE LOAD SIGNAL is the one addition to the page: after the first frame has been
 // applied AND committed, a requestAnimationFrame callback sets
 // `data-replay-loaded="true"` on <html> and only THEN posts the `coworld-replay`
@@ -69,6 +75,9 @@ const PHASES = [
 ];
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** The dwell between snapshots at 1× playback. The transport's speed chips divide it. */
+const PLAYBACK_MS = 250;
 
 /** Tell the embed we are painted. The ATTRIBUTE first, the bridge second. */
 function signalLoaded(): void {
@@ -162,6 +171,7 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
   const [index, setIndex] = useState(0);
   const [follow, setFollow] = useState(liveMode);
   const [playing, setPlaying] = useState(replayMode);
+  const [speed, setSpeed] = useState(1);
   const [loadError, setLoadError] = useState<string | null>(null);
   const signalled = useRef(false);
 
@@ -222,20 +232,47 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
   const over = endcard !== null || (store.status?.ended ?? false);
   const lastSlot = Math.max(0, snaps.length - 1) + (over ? 1 : 0);
 
+  // The playhead follows the HEAD when new frames arrive (or when the game ends and
+  // the synthetic FINAL slot appears). `playing` is read through a ref on purpose:
+  // it is a condition here, never a trigger. As a dependency it made every
+  // pause→resume — the play button, and now Space — yank the playhead to the head
+  // instead of continuing where the viewer paused.
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
   useEffect(() => {
-    if ((follow || playing) && snaps.length) setIndex(follow && over ? lastSlot : snaps.length - 1);
-  }, [snaps.length, follow, playing, over, lastSlot]);
+    if ((follow || playingRef.current) && snaps.length) setIndex(follow && over ? lastSlot : snaps.length - 1);
+  }, [snaps.length, follow, over, lastSlot]);
 
-  // Playback: one snapshot per 250 ms, LOOPING in replay mode so a short cert
-  // replay outlasts a 15 s viewer soak.
+  // Playback: one snapshot per PLAYBACK_MS / speed, LOOPING in replay mode so a
+  // short cert replay outlasts a 15 s viewer soak. `speed` comes from the transport's
+  // 0.5× / 1× / 2× chips, so half speed is a 500 ms dwell.
   useEffect(() => {
     if (!playing || liveMode || snaps.length === 0) return;
     const id = setInterval(
       () => setIndex((i) => (i + 1 < snaps.length ? i + 1 : replayMode ? 0 : (setPlaying(false), i))),
-      250,
+      PLAYBACK_MS / speed,
     );
     return () => clearInterval(id);
-  }, [playing, liveMode, snaps.length, replayMode]);
+  }, [playing, speed, liveMode, snaps.length, replayMode]);
+
+  // SPACE PAUSES. Bound on the document, so it works wherever the focus sits on the
+  // page — including inside the softmax.com embed's iframe, which receives the key
+  // itself once it has focus. Only on a recording: a live console has no transport.
+  // Ignored while the viewer is typing somewhere, and preventDefault so the page
+  // never scrolls and a focused play button never fires twice.
+  useEffect(() => {
+    if (liveMode) return;
+    const onKey = (evt: KeyboardEvent): void => {
+      if (evt.code !== "Space" && evt.key !== " ") return;
+      // `document` itself is a legal target; its tagName is simply undefined.
+      const t = evt.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable) return;
+      evt.preventDefault();
+      setPlaying((p) => !p);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [liveMode]);
 
   const snapshot: GameSnapshot | null = snaps.length ? snaps[Math.min(index, snaps.length - 1)]! : null;
   const viewingFinal = over && index > snaps.length - 1;
@@ -243,12 +280,19 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
   // THE LOAD SIGNAL. Fires once, after the first frame has been applied AND
   // committed — a requestAnimationFrame callback runs after the browser has had
   // the chance to paint this commit.
+  // It depends on HAVING a frame, not on WHICH frame: keyed on `snapshot` itself,
+  // the very next playhead move — the first playback tick, the head-follow jump —
+  // re-ran this effect, and its cleanup cancelled the still-pending rAF while
+  // `signalled` blocked ever scheduling another. The page then rendered, played,
+  // and never said `data-replay-loaded`, which is exactly the hang the embed and
+  // `viewer_smoke.mjs --timeout` read as a dead bundle.
+  const havePainted = snapshot !== null;
   useEffect(() => {
-    if (signalled.current || snapshot === null) return;
+    if (signalled.current || !havePainted) return;
     signalled.current = true;
     const raf = requestAnimationFrame(() => signalLoaded());
     return () => cancelAnimationFrame(raf);
-  }, [snapshot]);
+  }, [havePainted]);
 
   const turnNow = snapshot ? snapshot.turn : 0;
   const resolved = snapshot ? lastResolvedTurn(snapshot) : 0;
@@ -315,6 +359,8 @@ export function App({ replay: injected }: { replay?: Replay } = {}): React.React
             live={liveMode}
             playing={playing}
             onTogglePlay={() => setPlaying((p) => !p)}
+            speed={speed}
+            onSpeed={setSpeed}
           />
         }
       />

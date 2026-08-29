@@ -10,8 +10,8 @@
 //  * NO ALIAS LEAK: `redact(state, seat)`, stringified, contains no string from
 //    `config.players[].name`.
 import React from "react";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, cleanup, waitFor, act, fireEvent, createEvent } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { HexBoard } from "./HexBoard";
@@ -36,6 +36,9 @@ import type { GameSnapshot } from "../shared/snapshot";
 import { runeLength } from "../shared/engine/text";
 
 afterEach(cleanup);
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const scenario = playScenario(7, 7);
 
@@ -274,5 +277,89 @@ describe("the replay page RE-DERIVES what it draws", () => {
     // The engine reproduced every recorded frame from the recorded events alone.
     expect(rederiveReplay(frames).mismatch).toBeNull();
     expect(rederiveReplay(frames).verified).toBe(5);
+  });
+});
+
+// The TRANSPORT. Both shipped shells (index.html and index-agent.html) mount this
+// same <App/>, so what holds here holds on every page the bundle ships.
+describe("the replay transport: Space pauses, the chips set the speed", () => {
+  const replay = () => ({ frames: playRecordedFrames(7, 4) as never });
+  /** The playhead: the scrubber cell carrying `is-now`. */
+  const head = (): string | null =>
+    document.querySelector(".cogui-sbar-turn.is-now")?.getAttribute("data-testid") ?? null;
+
+  it("says data-replay-loaded even though the playhead moves in the same commit", async () => {
+    // THE LOAD SIGNAL vs THE TRANSPORT. The signal is a one-shot rAF; the playhead
+    // jumps to the head in the very same commit. Keyed on the snapshot IDENTITY,
+    // that jump cancelled the pending frame and the page never said it had loaded —
+    // a bundle the embed and viewer_smoke.mjs cannot tell from a dead one.
+    delete document.documentElement.dataset.replayLoaded;
+    render(<App replay={replay()} />);
+    await waitFor(() => expect(document.documentElement.dataset.replayLoaded).toBe("true"));
+  });
+
+  it("offers 0.5x / 1x / 2x with 1x active, and selects the chip clicked", () => {
+    render(<App replay={replay()} />);
+    const chip = (rate: string): HTMLElement => screen.getByTestId(`speed-${rate}`);
+    expect(["0.5", "1", "2"].map((r) => chip(r).textContent)).toEqual(["0.5\u00d7", "1\u00d7", "2\u00d7"]);
+    expect(chip("1").dataset.active).toBe("1");
+    fireEvent.click(chip("0.5"));
+    expect(chip("0.5").dataset.active).toBe("1");
+    expect(chip("1").dataset.active).toBe("0");
+  });
+
+  it("Space toggles playback both ways, swallowing the key so the page never scrolls", () => {
+    render(<App replay={replay()} />);
+    const toggle = (): HTMLElement => screen.getByTestId("playtoggle");
+    // A recording opens PLAYING, so the button offers the pause glyph.
+    expect(toggle().textContent).toBe("\u275a\u275a");
+    const down = createEvent.keyDown(document, { key: " ", code: "Space" });
+    fireEvent(document, down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(toggle().textContent).toBe("\u25b6");
+    fireEvent.keyDown(document, { key: " ", code: "Space" });
+    expect(toggle().textContent).toBe("\u275a\u275a");
+  });
+
+  it("leaves Space alone while the viewer is typing", () => {
+    render(<App replay={replay()} />);
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    const down = createEvent.keyDown(field, { key: " ", code: "Space" });
+    fireEvent(field, down);
+    expect(down.defaultPrevented).toBe(false);
+    expect(screen.getByTestId("playtoggle").textContent).toBe("\u275a\u275a");
+    field.remove();
+  });
+
+  it("pausing holds the playhead, and resuming continues from there", () => {
+    vi.useFakeTimers();
+    render(<App replay={replay()} />);
+    act(() => void vi.advanceTimersByTime(250));
+    const paused = head();
+    fireEvent.keyDown(document, { key: " ", code: "Space" });
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(head()).toBe(paused); // paused means PAUSED, not slow
+    fireEvent.keyDown(document, { key: " ", code: "Space" });
+    // Resuming must not yank the playhead to the head of the recording.
+    expect(head()).toBe(paused);
+    act(() => void vi.advanceTimersByTime(250));
+    expect(head()).not.toBe(paused);
+  });
+
+  it("the chips divide the per-snapshot dwell: 250 ms at 1x, 500 at 0.5x, 125 at 2x", () => {
+    vi.useFakeTimers();
+    render(<App replay={replay()} />);
+    const step = (rate: string, dwell: number): void => {
+      fireEvent.click(screen.getByTestId(`speed-${rate}`)); // restarts the interval
+      const from = head();
+      act(() => void vi.advanceTimersByTime(dwell - 1));
+      expect(head()).toBe(from); // one tick short: nothing has moved yet
+      act(() => void vi.advanceTimersByTime(1));
+      expect(head()).not.toBe(from);
+    };
+    step("1", 250);
+    step("0.5", 500);
+    step("2", 125);
   });
 });
