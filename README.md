@@ -93,6 +93,8 @@ engine module be compiled into the replay viewer by vite and re-derive every fra
 
 ## Develop
 
+Training data for all three certified variants: [TRAINING.md](TRAINING.md).
+
 ```bash
 pnpm install
 pnpm typecheck              # tsc --noEmit (strict)
