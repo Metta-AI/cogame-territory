@@ -32,3 +32,24 @@ uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
 The exporter uses the same anonymous aliases and redacted observation as
 the hosted player. Opponents' paint balances, pending orders, and private
 messages to other seats stay hidden.
+
+## Numeric reinforcement learning
+
+`tools/train-bridge.ts` exposes 908 values from the acting seat's redacted
+view and a fixed catalog of 373 choices. The catalog contains hold, the two
+scripted multi-order plans, single claim and raze orders for each board tile,
+and four transfer amounts for each other seat. The production legality
+predicate masks unavailable choices. All living seats choose against one
+pre-turn state, then the production simulator advances. The full hosted
+observation remains in `semantic_view` and `messages`.
+
+```sh
+pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
+python3 tools/test-train-bridge.py /tmp/territory-train-bridge.mjs
+```
+
+From a Metta checkout with the Coworld training stack, pass the Node bridge
+command, absolute manifest path, and certified variant ID to
+`recipes.external.coworld.train` for native PufferLib or
+`recipes.external.coworld_metta_rl.train` for Metta RL. Use `players=9`,
+`max_decisions=162`, and a timestep limit.
