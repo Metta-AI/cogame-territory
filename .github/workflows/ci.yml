@@ -69,6 +69,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Export complete post-training games
+        run: node tools/test-posttrain.mjs
+
       - name: Build (web bundle + the self-contained server bundles)
         run: pnpm build
 
