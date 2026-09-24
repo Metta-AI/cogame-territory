@@ -26,6 +26,7 @@ class Bridge {
   submissions: Record<number, Submission> = {};
   decisionId = 0;
   seed = 0;
+  catalogCache: Array<Submission | null> | null = null;
 
   get seat(): number {
     return this.pending[0]!;
@@ -36,6 +37,7 @@ class Bridge {
   }
 
   catalog(): Array<Submission | null> {
+    if (this.catalogCache !== null) return this.catalogCache;
     const view = this.view;
     const choices: Submission[] = [
       { orders: [], messages: [] },
@@ -54,8 +56,9 @@ class Bridge {
         choices.push({ orders: [{ type: "transfer", to: cog.alias, amount }], messages: [] });
       }
     }
-    return choices.map((choice) =>
+    this.catalogCache = choices.map((choice) =>
       rejectionReason(this.state, this.seat, choice.orders) === null ? choice : null);
+    return this.catalogCache;
   }
 
   current(): object {
@@ -109,6 +112,7 @@ class Bridge {
     this.pending = [...this.state.cogOrder];
     this.submissions = {};
     this.decisionId = 0;
+    this.catalogCache = null;
     return this.current();
   }
 
@@ -127,6 +131,7 @@ class Bridge {
     this.submissions[this.seat] = decision;
     this.pending.shift();
     this.decisionId++;
+    this.catalogCache = null;
     if (this.pending.length === 0) {
       this.state = stepTurn(this.state, this.submissions);
       this.submissions = {};
