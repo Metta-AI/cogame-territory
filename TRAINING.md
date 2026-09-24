@@ -32,3 +32,41 @@ uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
 The exporter uses the same anonymous aliases and redacted observation as
 the hosted player. Opponents' paint balances, pending orders, and private
 messages to other seats stay hidden.
+
+## Numeric reinforcement learning
+
+`tools/train-bridge.ts` exposes 908 values from the acting seat's redacted
+view and a fixed catalog of 373 choices. The catalog contains hold, the two
+scripted multi-order plans, single claim and raze orders for each board tile,
+and four transfer amounts for each other seat. The production legality
+predicate masks unavailable choices. All living seats choose against one
+pre-turn state, then the production simulator advances. The full hosted
+observation remains in `semantic_view` and `messages`.
+
+```sh
+pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
+python3 tools/test-train-bridge.py /tmp/territory-train-bridge.mjs
+```
+
+From a Metta checkout with the Coworld training stack, pass the Node bridge
+command, absolute manifest path, and certified variant ID to
+`recipes.external.coworld.train` for native PufferLib or
+`recipes.external.coworld_metta_rl.train` for Metta RL. Use `players=9`,
+`max_decisions=162`, and a timestep limit.
+
+## Training proof (2026-09-24)
+
+The bridge completed teacher and random games on all three variants. Local
+Metta RL runs reached 512 timesteps per variant. Native PufferLib on one
+RTX 4090 reached 4,096 timesteps per variant, then reloaded each checkpoint
+for five held-out games at each seed. PufferLib computed the reported scores
+and pairwise performance from the engine's terminal results.
+
+| Variant | Seed 101 score / performance | Seed 102 score / performance |
+| --- | ---: | ---: |
+| `open` | 10.8 / 0.025 | 14.4 / 0.000 |
+| `rooms` | 14.4 / 0.000 | 14.4 / 0.000 |
+| `inside_out` | 140.6 / 0.550 | 171.0 / 0.763 |
+
+These short pilots prove checkpoint training and reload, not competitive
+policy quality.

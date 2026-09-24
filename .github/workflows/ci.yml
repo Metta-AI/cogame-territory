@@ -72,6 +72,11 @@ jobs:
       - name: Export complete post-training games
         run: node tools/test-posttrain.mjs
 
+      - name: Exercise numeric training bridge
+        run: |
+          pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
+          python3 tools/test-train-bridge.py /tmp/territory-train-bridge.mjs
+
       - name: Build (web bundle + the self-contained server bundles)
         run: pnpm build
 
