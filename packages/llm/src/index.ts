@@ -37,3 +37,5 @@ export { LlmPilot, type LlmPilotOpts } from "./llm-pilot.js";
 export { applyGuidance } from "./guidance.js";
 
 export { MessageBus, visibleToSeat, type BusMessage } from "./message-bus.js";
+
+export { JevClient, type JevSystemOneRequest, type JevSystemOneResponse } from "./jev.js";

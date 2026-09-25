@@ -3,6 +3,7 @@
 //
 //   PLAYER_PROMPT=<doctrine>  (+ USE_BEDROCK=true)  LLM policy (Bedrock haiku)
 //   PLAYER_SCRIPTED=homesteader | raider            that scripted baseline
+//   PLAYER_JEV=1                                    Jev System One policy
 //   neither set                                     homesteader
 //
 // The keyless default is deliberate: a CI/docker smoke with no credentials at all
@@ -22,6 +23,7 @@ import { runCoworldPlayer } from "@cogweb/coworld";
 import type { PlayerDecideContext } from "@cogweb/coworld";
 
 import { SubmissionSchema } from "../shared/engine/orders.js";
+import { makeJevDecide } from "./jev.js";
 import { territoryModule } from "./game.js";
 import type { TerritoryDecision, TerritorySeamState, TerritoryView } from "./game.js";
 import type { TerritoryObservation } from "./redact.js";
@@ -98,6 +100,13 @@ export function run(): Promise<number[]> {
   // results.fallbacks (cogolf, 2026-08-24). We honour a doctrine either way and
   // let robustDecide's terminal-credentials path degrade if there is no sidecar.
   const baseline = scripted && scripted !== "" ? scripted : "homesteader";
+  if (env.PLAYER_JEV === "1") {
+    console.log(`[territory-player] Jev policy (fallback ${baseline})`);
+    return runCoworldPlayer<TerritorySeamState, TerritoryDecision, TerritoryView>({
+      module: territoryModule,
+      decide: makeJevDecide(baseline),
+    });
+  }
   if (prompt && !scripted) {
     console.log(`[territory-player] LLM policy (model ${env.BEDROCK_MODEL ?? DEFAULT_MODEL}, fallback ${baseline})`);
     return runCoworldPlayer<TerritorySeamState, TerritoryDecision, TerritoryView>({

@@ -77,6 +77,15 @@ certifies the contract offline:
 With neither variable set the player plays `homesteader`, so a keyless CI or docker smoke completes
 and never hangs.
 
+`PLAYER_JEV=1` runs Jev System One in that same player process. It reads the
+seat's ordinary observation and chooses a complete legal order set plus an
+optional public or private talk line. Its choices include holding, the two
+scripted plans, affordable claims and razes, and transfers to living seats.
+The finite talk menu does not generate original negotiations. Set
+`USE_BEDROCK=true` for the hosted sidecar, or `TYPESAFE_API_KEY` for local
+inference. Without either endpoint, the player sends an explicit scripted
+fallback. The game receives no Jev credential or policy prompt.
+
 ## Repo layout
 
 ```

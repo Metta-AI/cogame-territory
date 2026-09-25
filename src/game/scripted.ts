@@ -44,7 +44,7 @@ const parse = (t: string): { q: number; r: number } => {
 /** Hex distance from `tile` to the seat's nearest OWNED tile, or — when it owns
  *  nothing — from its hearth. The same predicate the engine's validator uses,
  *  recomputed from the view (which is all a player container has). */
-function reachDistance(view: TerritoryObservation, tile: string): number {
+export function reachDistance(view: TerritoryObservation, tile: string): number {
   const target = parse(tile);
   const mine = view.tiles.filter((t) => t.owner === view.you.alias);
   const origins = mine.length > 0 ? mine.map((t) => parse(t.t)) : [parse(view.you.hearth)];
@@ -58,7 +58,7 @@ function foreignHearths(view: TerritoryObservation): Array<{ q: number; r: numbe
 }
 
 /** The paint a raze on `tile` costs this seat, recomputed from the view. */
-function razeCostOf(view: TerritoryObservation, tile: string): number {
+export function razeCostOf(view: TerritoryObservation, tile: string): number {
   const target = parse(tile);
   return foreignHearths(view).some((h) => distance(h, target) <= 1) ? RAZE_HOME_COST : RAZE_COST;
 }

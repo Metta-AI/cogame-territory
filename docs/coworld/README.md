@@ -29,11 +29,15 @@ The image COPIES the pre-built bundles, so they must be built in the same run th
 | binary | what it is | selected by |
 |---|---|---|
 | `/bin/territory` | the game host (`dist-server/coworld/game-cli.js`) | manifest `game.runnable.run` |
-| `/bin/territory-player` | every policy (`dist-server/game/player.js`) | `PLAYER_PROMPT` (+ `USE_BEDROCK=true`) for the LLM policy, `PLAYER_SCRIPTED=homesteader\|raider` for a baseline, neither ⇒ `homesteader` |
+| `/bin/territory-player` | every policy (`dist-server/game/player.js`) | `PLAYER_PROMPT` (+ `USE_BEDROCK=true`) for the LLM policy, `PLAYER_JEV=1` for Jev, `PLAYER_SCRIPTED=homesteader\|raider` for a baseline, neither ⇒ `homesteader` |
 
 `USE_BEDROCK: "true"` is **not optional** on an LLM policy: the platform gates the player pod's
 Bedrock sidecar on it, and without it a `PLAYER_PROMPT` seat silently plays scripted — invisibly to
 `results.fallbacks`.
+
+Jev also runs in the player container. Use `PLAYER_JEV=1` and `USE_BEDROCK=true`
+for the hosted TypeSafe sidecar, or `PLAYER_JEV=1` with `TYPESAFE_API_KEY` for
+local inference. Keep these credentials on the player, never the game.
 
 ## The replay viewer
 
