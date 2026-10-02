@@ -7,7 +7,7 @@
 // against the schema ONLY; the game HOST checks legality and, on rejection,
 // re-requests with a `reason` that the next observation surfaces for a retry.
 
-import { BedrockLlmClient, robustDecide } from "@cogweb/llm";
+import { OpenRouterLlmClient, robustDecide } from "@cogweb/llm";
 import type { GameModule } from "@cogweb/core";
 import { runCoworldPlayer } from "./player-runtime.js";
 import type { PlayerDecideContext } from "./player-runtime.js";
@@ -16,7 +16,7 @@ export interface LlmCoworldPlayerOpts<State, Decision, View> {
   /** The game module; MUST carry an `autopilot` (its prompts drive the model). */
   module: GameModule<State, Decision, View>;
   /** A Bedrock client; defaults to one built from env (optionally `prefix`ed). */
-  client?: BedrockLlmClient;
+  client?: OpenRouterLlmClient;
   /** Env prefix for the default client (e.g. "COGNAMES" → COGNAMES_BEDROCK_*). */
   prefix?: string;
   /** Socket URL; defaults to COWORLD_PLAYER_WS_URL. */
@@ -35,7 +35,7 @@ export function makeLlmCoworldDecide<State, Decision, View>(
 ): (ctx: PlayerDecideContext<State, Decision, View>) => Promise<Decision> {
   const { game, autopilot } = opts.module;
   if (!autopilot) throw new Error("makeLlmCoworldDecide requires module.autopilot");
-  const client = opts.client ?? new BedrockLlmClient({ prefix: opts.prefix });
+  const client = opts.client ?? new OpenRouterLlmClient({ prefix: opts.prefix });
 
   return ({ view, seat, reason, messages, timeLeftMs }) => {
     // The redacted view IS this player's working state: the autopilot, schema,

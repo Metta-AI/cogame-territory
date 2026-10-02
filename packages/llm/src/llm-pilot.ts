@@ -6,11 +6,11 @@
 // prompt and the model call.
 import type { Autopilot, ObservedMessage } from "@cogweb/core";
 import type { DecideContext, Pilot } from "@cogweb/core";
-import type { BedrockLlmClient, ToolSpec } from "./bedrock.js";
+import type { OpenRouterLlmClient, ToolSpec } from "./openrouter.js";
 import { robustDecide } from "./robust-decide.js";
 
 export interface LlmPilotOpts<State, Decision> {
-  client: BedrockLlmClient;
+  client: OpenRouterLlmClient;
   autopilot: Autopilot<State, Decision>;
   /** Per-seat model id (operator-selectable); empty/undefined uses the client's. */
   modelFor: (seat: number) => string;
@@ -20,7 +20,7 @@ export interface LlmPilotOpts<State, Decision> {
 
 export class LlmPilot<State, Decision> implements Pilot<State, Decision> {
   readonly kind = "llm" as const;
-  readonly #client: BedrockLlmClient;
+  readonly #client: OpenRouterLlmClient;
   readonly #autopilot: Autopilot<State, Decision>;
   readonly #modelFor: (seat: number) => string;
   readonly #messagesFor: (seat: number) => ObservedMessage[];
@@ -43,6 +43,7 @@ export class LlmPilot<State, Decision> implements Pilot<State, Decision> {
 
     return robustDecide<Decision>({
       client: this.#client,
+      slot: seat,
       system,
       // Re-render each attempt: the game's renderObservation folds in the
       // operator guidance; on a retry we append the prior rejection so the model

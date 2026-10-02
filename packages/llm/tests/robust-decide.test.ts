@@ -4,38 +4,37 @@
 // throws out of `robustDecide` — a throw here propagates out of the player process
 // (`src/game/player.ts`), which loses the seat for the rest of the episode instead
 // of degrading it to its scripted move.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { robustDecide } from "../src/robust-decide";
-import type { BedrockLlmClient, ConverseResult } from "../src/bedrock";
+import { OpenRouterLlmClient, type LlmResult } from "../src/openrouter";
 
 const zeroUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
-const reply = (text: string): ConverseResult => ({ text, usage: zeroUsage });
+const reply = (text: string): LlmResult => ({ text, usage: zeroUsage });
 
 /** A client whose Nth `converse` call does whatever the Nth entry says. */
-function fakeClient(script: Array<ConverseResult | Error>): { client: BedrockLlmClient; calls: () => number } {
+function fakeClient(script: Array<LlmResult | Error>): { client: OpenRouterLlmClient; calls: () => number } {
   let calls = 0;
   const client = {
-    converse: async (): Promise<ConverseResult> => {
+    complete: async (): Promise<LlmResult> => {
       const step = script[calls] ?? script[script.length - 1]!;
       calls += 1;
       if (step instanceof Error) throw step;
       return step;
     },
-  } as unknown as BedrockLlmClient;
+  } as unknown as OpenRouterLlmClient;
   return { client, calls: () => calls };
 }
 
 const throttle = (): Error => Object.assign(new Error("Too many requests"), { name: "ThrottlingException" });
-const noCreds = (): Error =>
-  Object.assign(new Error("Could not load credentials from any providers"), { name: "CredentialsProviderError" });
+afterEach(() => vi.unstubAllEnvs());
 
 interface Move {
   move: string;
 }
 
 async function run(
-  script: Array<ConverseResult | Error>,
+  script: Array<LlmResult | Error>,
   maxAttempts = 2,
 ): Promise<{ decision: Move; attempts: Array<{ error: string | null }>; calls: number }> {
   const { client, calls } = fakeClient(script);
@@ -74,7 +73,10 @@ describe("robustDecide on a transport failure", () => {
   });
 
   it("plays the baseline IMMEDIATELY on a no-credentials error, with no retry storm", async () => {
-    const out = await run([noCreds(), noCreds()]);
+    vi.stubEnv("COWORLD_LLM_ENDPOINT", "");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const error = await new OpenRouterLlmClient().complete({ system: "s", messages: [] }).catch((error) => error);
+    const out = await run([error, error]);
     expect(out.decision).toEqual({ move: "scripted" });
     expect(out.calls).toBe(1);
     expect(out.attempts).toHaveLength(1);

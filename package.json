@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3",
     "@cogweb/core": "workspace:*",
     "@cogweb/coworld": "workspace:*",
     "@cogweb/llm": "workspace:*",
@@ -27,7 +26,7 @@
     "react-dom": "^18.3.1",
     "ws": "^8.18",
     "zod": "^3.23",
-    "@aws-sdk/client-bedrock": "^3"
+    "@anthropic-ai/sdk": "^0.125.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.45",

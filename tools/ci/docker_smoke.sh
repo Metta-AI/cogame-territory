@@ -38,9 +38,9 @@
 #                              job loads it in a real browser -- that is the
 #                              only replay in CI that is known to be readable
 #                              by this game's own viewer.
-#   ANTHROPIC_API_KEY          if set, forwarded to the players so the LLM path
-#                              is exercised; if unset the game must fall back
-#                              to its scripted baselines and still complete
+#   COWORLD_LLM_ENDPOINT      native sidecar endpoint forwarded to players
+#   COWORLD_LLM_MODEL         canonical hosted model
+#   OPENROUTER_API_KEY        optional local provider credential
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -191,12 +191,11 @@ chmod 777 "${work_dir}"
 docker network create "${network}" >/dev/null
 
 player_env=()
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  player_env+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
-  echo "ANTHROPIC_API_KEY present: the LLM path will be exercised"
-else
-  echo "no ANTHROPIC_API_KEY: the game must complete on its scripted baselines"
-fi
+for name in COWORLD_LLM_ENDPOINT COWORLD_LLM_MODEL OPENROUTER_API_KEY; do
+  if [ -n "${!name:-}" ]; then
+    player_env+=(-e "${name}=${!name}")
+  fi
+done
 
 echo "starting game container (${image} ${game_bin}) ..."
 docker run -d --name "${prefix}-game" \

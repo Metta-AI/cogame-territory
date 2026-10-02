@@ -17,7 +17,7 @@ await runCoworldGameCli({
   runGame: runCoworldGame,
   runReplay: runCoworldReplay,
   // `final` frames go out BEFORE the artifacts are written (so each player's
-  // bedrock_usage line survives), then results + replay, then this bounded linger
+  // llm_usage line survives), then results + replay, then this bounded linger
   // during which /healthz, /client/* and /global keep answering, then exit 0.
   shutdownGraceMs: SHUTDOWN_GRACE_MS,
 });

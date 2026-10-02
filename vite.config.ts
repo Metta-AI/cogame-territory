@@ -49,7 +49,7 @@ export default defineConfig(() => ({
       ...sharedDep("react-dom"),
       ...sharedDep("express"),
       ...sharedDep("ws"),
-      ...sharedDep("@aws-sdk/client-bedrock-runtime"),
+      ...sharedDep("@anthropic-ai/sdk"),
     ],
   },
   // Three shells: the broadcast console (index.html), the per-seat console
