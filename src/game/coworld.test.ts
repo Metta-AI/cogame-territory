@@ -20,7 +20,6 @@ const policies = JSON.parse(readFileSync(new URL("../../tools/ci/policies.json",
   player?: string;
 }>;
 
-const PINNED_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
 /** Every array-typed property of a JSON Schema object, recursively. */
 function arrayProps(schema: unknown, path = "", out: string[] = []): string[] {
@@ -132,14 +131,12 @@ describe("tools/ci/policies.json", () => {
     expect(new Set(policies.map((p) => JSON.stringify(p.env))).size).toBe(4);
   });
 
-  it("both champions are PLAYER_PROMPT with USE_BEDROCK and the PINNED model", () => {
+  it("both champions are prompt policies without retired provider bindings", () => {
     for (const name of ["territory-steward", "territory-condottiere"]) {
       const p = policies.find((x) => x.name === name)!;
       expect(p.env.PLAYER_PROMPT!.length).toBeGreaterThan(200);
-      // USE_BEDROCK is NOT optional: the platform gates the player pod's Bedrock
-      // sidecar on it, and without it a PLAYER_PROMPT seat silently plays scripted.
-      expect(p.env.USE_BEDROCK).toBe("true");
-      expect(p.env.BEDROCK_MODEL).toBe(PINNED_MODEL);
+      expect(p.env).not.toHaveProperty("USE_BEDROCK");
+      expect(p.env).not.toHaveProperty("BEDROCK_MODEL");
       expect(p.env.PLAYER_SCRIPTED).toBeUndefined();
     }
   });

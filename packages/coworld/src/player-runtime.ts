@@ -14,7 +14,7 @@
 // via `module.game.baselineDecision`, so a no-LLM player is a one-liner.
 import { WebSocket } from "ws";
 import type { GameModule } from "@cogweb/core";
-import { bedrockUsageTotals } from "@cogweb/llm";
+import { llmUsageTotals } from "@cogweb/llm";
 import {
   parseGameToPlayer,
   type InboxMessage,
@@ -84,7 +84,7 @@ export function runCoworldPlayer<State, Decision, View>(
           // it's recoverable from the player log in the episode bundle (the player
           // process never writes the replay/results — the host does). Zeroed for a
           // scripted/no-LLM policy, which is itself the useful signal.
-          console.log(JSON.stringify({ kind: "bedrock_usage", ...bedrockUsageTotals() }));
+          console.log(JSON.stringify({ kind: "llm_usage", ...llmUsageTotals() }));
           resolve(msg.scores);
           ws.close();
           return;

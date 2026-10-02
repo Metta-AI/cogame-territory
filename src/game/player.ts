@@ -1,23 +1,19 @@
 // The ONE player entrypoint, shipped in the SAME image as the game and selected
 // by env — `dist-server/game/player.js`, shimmed as `/bin/territory-player`:
 //
-//   PLAYER_PROMPT=<doctrine>  (+ USE_BEDROCK=true)  LLM policy (Bedrock haiku)
+//   PLAYER_PROMPT=<doctrine>  (uploaded with --use-llm) LLM policy
 //   PLAYER_SCRIPTED=homesteader | raider            that scripted baseline
 //   neither set                                     homesteader
 //
 // The keyless default is deliberate: a CI/docker smoke with no credentials at all
 // completes on the scripted baselines and never hangs.
 //
-// MODEL PINNING. The model is pinned to BEDROCK_MODEL exactly; the client's
-// MODEL_CANDIDATES ladder is NOT used, because the sonnet rung times out on every
-// sidecar call and one throttle then cascades into scripted fallbacks (raid round
-// 2, 2026-08-23). Pinning is done by injecting a one-element profile lister, so
-// discovery never runs and no other id is ever attempted.
+// Native Coworld model selection uses canonical OpenRouter IDs.
 
 import { argv, env } from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { BedrockLlmClient, robustDecide } from "@cogweb/llm";
+import { OpenRouterLlmClient, robustDecide } from "@cogweb/llm";
 import { runCoworldPlayer } from "@cogweb/coworld";
 import type { PlayerDecideContext } from "@cogweb/coworld";
 
@@ -31,7 +27,7 @@ import { scriptedDecide } from "./scripted.js";
 type Ctx = PlayerDecideContext<TerritorySeamState, TerritoryDecision, TerritoryView>;
 
 /** Haiku 4.5. `maxTokens: 900` — 400 truncates ("cut off at max_tokens"). */
-const DEFAULT_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 const MAX_TOKENS = 900;
 /** One retry, then the scripted move. Capped at one per seat per turn so nine
  *  seats stay under the Bedrock sidecar's 30 requests/minute per-episode cap. */
@@ -46,12 +42,10 @@ const fallbackMove = (baseline: string, view: TerritoryObservation): TerritoryDe
 /** The LLM policy: Bedrock haiku via `robustDecide`, the doctrine folded into the
  *  system prompt, the scripted baseline as the terminal fallback. */
 export function makeLlmDecide(doctrine: string, baseline: string): (ctx: Ctx) => Promise<TerritoryDecision> {
-  const model = env.BEDROCK_MODEL?.trim() || DEFAULT_MODEL;
-  const client = new BedrockLlmClient({
+  const model = env.COWORLD_LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const client = new OpenRouterLlmClient({
     model,
     maxTokens: MAX_TOKENS,
-    // Pin the model: one candidate, no discovery, no ladder.
-    lister: () => Promise.resolve([model]),
   });
   const system = systemPrompt(doctrine);
   return async (ctx) => {
@@ -93,13 +87,10 @@ export const makeScriptedDecide = (baseline: string) => (ctx: Ctx): TerritoryDec
 export function run(): Promise<number[]> {
   const scripted = env.PLAYER_SCRIPTED?.trim();
   const prompt = env.PLAYER_PROMPT?.trim();
-  // `USE_BEDROCK` gates the player pod's Bedrock sidecar on the platform; without
-  // it a PLAYER_PROMPT seat would silently play scripted, invisibly to
-  // results.fallbacks (cogolf, 2026-08-24). We honour a doctrine either way and
-  // let robustDecide's terminal-credentials path degrade if there is no sidecar.
+  // Hosted prompt policies receive native sidecar access through --use-llm.
   const baseline = scripted && scripted !== "" ? scripted : "homesteader";
   if (prompt && !scripted) {
-    console.log(`[territory-player] LLM policy (model ${env.BEDROCK_MODEL ?? DEFAULT_MODEL}, fallback ${baseline})`);
+    console.log(`[territory-player] LLM policy (model ${env.COWORLD_LLM_MODEL ?? DEFAULT_MODEL}, fallback ${baseline})`);
     return runCoworldPlayer<TerritorySeamState, TerritoryDecision, TerritoryView>({
       module: territoryModule,
       decide: makeLlmDecide(prompt, baseline),
