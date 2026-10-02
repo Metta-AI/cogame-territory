@@ -6,7 +6,7 @@
 // prompt and the model call.
 import type { Autopilot, ObservedMessage } from "@cogweb/core";
 import type { DecideContext, Pilot } from "@cogweb/core";
-import type { OpenRouterLlmClient, ToolSpec } from "./openrouter.js";
+import type { OpenRouterLlmClient } from "./openrouter.js";
 import { robustDecide } from "./robust-decide.js";
 
 export interface LlmPilotOpts<State, Decision> {
@@ -36,15 +36,16 @@ export class LlmPilot<State, Decision> implements Pilot<State, Decision> {
     const { game, state, seat, guidance } = ctx;
     const system = this.#autopilot.systemPrompt({ game, seat });
     const messages = this.#messagesFor(seat);
-    const spec = this.#autopilot.tool?.(state, seat);
-    const tool: ToolSpec | undefined = spec
-      ? { name: spec.name, description: spec.description, inputSchema: spec.inputSchema }
-      : undefined;
+    const spec = this.#autopilot.actionSchema?.(state, seat);
+    const outputContract = spec
+      ? `\nReturn only a JSON object matching this schema: ${JSON.stringify(spec.inputSchema)}`
+      : "";
 
     return robustDecide<Decision>({
       client: this.#client,
       slot: seat,
-      system,
+      system: system + outputContract,
+      model: this.modelOf(seat),
       // Re-render each attempt: the game's renderObservation folds in the
       // operator guidance; on a retry we append the prior rejection so the model
       // re-states and fixes the error.
@@ -56,7 +57,7 @@ export class LlmPilot<State, Decision> implements Pilot<State, Decision> {
       validate: ctx.validate,
       baseline: () => game.baselineDecision(state, seat),
       recordAttempt: ctx.recordAttempt,
-      tool,
+      markFallback: ctx.markFallback,
     });
   }
 

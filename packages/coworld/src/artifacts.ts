@@ -7,7 +7,7 @@
 // file:// (and bare paths) are implemented; s3:// is a defined seam that throws
 // until a host wires an S3 client. Fail loud — a missing URI, bad scheme, or
 // non-2xx HTTP throws rather than silently degrading.
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ZodType } from "zod";
@@ -91,7 +91,10 @@ export async function readConfig<Config>(schema: ZodType<Config>): Promise<Confi
 }
 
 /** Validate and write the results artifact to `COGAME_RESULTS_URI`. */
-export async function writeResults<Results>(schema: ZodType<Results>, results: Results): Promise<void> {
+export async function writeResults<Results>(
+  schema: ZodType<Results>,
+  results: Results,
+): Promise<void> {
   const uri = requireEnv(RESULTS_URI_ENV);
   const validated = schema.parse(results);
   await writeBytes(uri, JSON.stringify(validated), "application/json");
@@ -106,4 +109,19 @@ export async function writeReplay(replay: unknown): Promise<void> {
 /** Whether a replay sink is configured (the artifact is optional). */
 export function hasReplayUri(): boolean {
   return Boolean(process.env[REPLAY_URI_ENV]);
+}
+
+/** Whole-episode private evidence, kept outside public replay and process logs. */
+export async function writeTrajectory(trajectory: unknown): Promise<void> {
+  const uri = process.env.COGAME_SAVE_TRAJECTORY_URI;
+  if (!uri) return;
+  const data = `${JSON.stringify(trajectory)}\n`;
+  if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("s3://")) {
+    await writeBytes(uri, data, "application/x-ndjson");
+    return;
+  }
+  const path = localPath(uri);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, data, { mode: 0o600 });
+  await chmod(path, 0o600);
 }

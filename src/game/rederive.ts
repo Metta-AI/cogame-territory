@@ -77,6 +77,12 @@ function submissionsFrom(frames: readonly ServerMessage[]): Map<string, Submissi
   for (const frame of frames) {
     if (frame.type !== "actPrompt") continue;
     const wire = frame.actPrompt;
+    if (wire.executedAction !== undefined) {
+      const applied = SubmissionSchema.safeParse(wire.executedAction);
+      if (applied.success) out.set(`${wire.turn}:${wire.seat}`, applied.data);
+      continue;
+    }
+    // Historical stored replays recorded their applied decision in response.
     if (wire.usedFallback) continue;
     for (const attempt of wire.attempts) {
       if (attempt.error !== null || attempt.response === "") continue;
@@ -131,7 +137,9 @@ export function rederiveReplay(frames: readonly ServerMessage[]): Rederivation {
         // The seam counts every fallback — host-side hold or player-side scripted
         // move — on the seat, and the snapshot carries that counter.
         if (decision.fallback) {
-          fallbacks = fallbacks.map((c) => (c.seat === seat ? { ...c, fallbacks: c.fallbacks + 1 } : c));
+          fallbacks = fallbacks.map((c) =>
+            c.seat === seat ? { ...c, fallbacks: c.fallbacks + 1 } : c,
+          );
         }
       }
       if (mismatch !== null) break;

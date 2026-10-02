@@ -12,6 +12,7 @@
 // `decide` produces a Decision the game will validate; this runtime stays
 // game-agnostic and only relays. The game's `GameModule` supplies the baseline
 // via `module.game.baselineDecision`, so a no-LLM player is a one-liner.
+import type { ActAttempt } from "@cogweb/protocol";
 import { WebSocket } from "ws";
 import type { GameModule } from "@cogweb/core";
 import { llmUsageTotals } from "@cogweb/llm";
@@ -43,6 +44,8 @@ export interface PlayerDecideContext<State, Decision, View> {
   config: unknown;
   /** The game module, e.g. for `module.game.baselineDecision`. */
   module: GameModule<State, Decision, View>;
+  recordAttempt(attempt: ActAttempt): void;
+  markFallback(): void;
 }
 
 export interface RunCoworldPlayerOpts<State, Decision, View> {
@@ -92,6 +95,9 @@ export function runCoworldPlayer<State, Decision, View>(
           // The game never sends an observation before welcome; the redacted
           // view and config are typed at the game boundary, so cast through.
           const view = msg.view as View;
+          const attempts: ActAttempt[] = [];
+          const speechAttempts: ActAttempt[] = [];
+          let usedFallback = false;
           const ctx: PlayerDecideContext<State, Decision, View> = {
             view,
             seat: msg.seat,
@@ -101,14 +107,56 @@ export function runCoworldPlayer<State, Decision, View>(
             timeLeftMs: msg.timeLeftMs,
             config: welcome?.config,
             module: opts.module,
+            recordAttempt: (attempt) => {
+              attempts.push(attempt);
+            },
+            markFallback: () => {
+              usedFallback = true;
+            },
           };
           // Decide and (optionally) talk in parallel; the reply carries both, so a
           // cheap-talk pass never blocks the move past what the player itself takes.
-          void Promise.all([
-            Promise.resolve(opts.decide(ctx)),
-            opts.talk ? Promise.resolve(opts.talk(ctx)) : Promise.resolve<TalkLine[]>([]),
-          ]).then(([decision, messages]) => {
-            const reply: ReplyMessage = { type: "reply", id: msg.id, decision, messages };
+          void Promise.allSettled([
+            Promise.resolve().then(() => opts.decide(ctx)),
+            opts.talk
+              ? Promise.resolve().then(() =>
+                  opts.talk!({
+                    ...ctx,
+                    markFallback: () => {},
+                    recordAttempt: (attempt) => {
+                      speechAttempts.push(attempt);
+                    },
+                  }),
+                )
+              : Promise.resolve<TalkLine[]>([]),
+          ]).then(([action, speech]) => {
+            if (action.status === "rejected" || speech.status === "rejected") {
+              const failure =
+                action.status === "rejected"
+                  ? action.reason
+                  : speech.status === "rejected"
+                    ? speech.reason
+                    : undefined;
+              ws.send(
+                JSON.stringify({
+                  type: "failure",
+                  id: msg.id,
+                  error: String(failure),
+                  attempts,
+                  speechAttempts,
+                }),
+              );
+              return;
+            }
+            const reply: ReplyMessage = {
+              type: "reply",
+              id: msg.id,
+              decision: action.value,
+              messages: speech.value,
+              attempts,
+              speechAttempts,
+              usedFallback,
+            };
             ws.send(JSON.stringify(reply));
           }, reject);
           return;

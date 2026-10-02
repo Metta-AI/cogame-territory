@@ -16,7 +16,7 @@
 // routes them through a per-episode message bus — the engine never reads them, so a
 // policy that ignores talk is unaffected (it just sends/receives an empty list).
 import { z } from "zod";
-import { Audience } from "@cogweb/protocol";
+import { Audience, ActAttempt } from "@cogweb/protocol";
 
 export const PROTOCOL = "cogweb.player.v1";
 
@@ -94,10 +94,21 @@ export const ReplyMessage = z.object({
   /** 0+ cheap-talk lines to post alongside this reply (the host routes them to the
    *  episode bus). Empty for a policy that doesn't talk. */
   messages: z.array(TalkLine).default([]),
+  attempts: z.array(ActAttempt).optional(),
+  speechAttempts: z.array(ActAttempt).optional(),
+  usedFallback: z.boolean().optional(),
 });
 export type ReplyMessage = z.infer<typeof ReplyMessage>;
 
-export const PlayerToGame = z.discriminatedUnion("type", [ReplyMessage]);
+export const FailureMessage = z.object({
+  type: z.literal("failure"),
+  id: z.number().int(),
+  error: z.string(),
+  attempts: z.array(ActAttempt),
+  speechAttempts: z.array(ActAttempt),
+});
+export type FailureMessage = z.infer<typeof FailureMessage>;
+export const PlayerToGame = z.discriminatedUnion("type", [ReplyMessage, FailureMessage]);
 export type PlayerToGame = z.infer<typeof PlayerToGame>;
 
 export function parseGameToPlayer(raw: unknown): GameToPlayer {

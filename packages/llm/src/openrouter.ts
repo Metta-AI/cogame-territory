@@ -1,22 +1,11 @@
-// Native Anthropic Messages transport to OpenRouter or the hosted inference gateway.
-import Anthropic from "@anthropic-ai/sdk";
-import type {
-  Message,
-  MessageCreateParamsNonStreaming,
-  Tool,
-} from "@anthropic-ai/sdk/resources/messages";
-
-export interface ToolSpec {
-  name: string;
-  description: string;
-  inputSchema: unknown;
-}
+// One direct text-action transport for local and hosted Coworld policies.
+import { z } from "zod";
+import { GenerationEvidenceError, SamplingEvidence, type TextGeneration } from "@cogweb/protocol";
 
 export interface LlmMessage {
   role: "user" | "assistant";
   text: string;
 }
-
 export interface LlmUsage {
   inputTokens: number;
   outputTokens: number;
@@ -26,10 +15,10 @@ export interface LlmUsage {
 
 export interface LlmResult {
   text: string;
-  toolInput?: unknown;
   usage: LlmUsage;
-  /** Transport request ID supplied by the native SDK for decision telemetry. */
-  providerRequestId?: string | null;
+  generation: TextGeneration;
+  providerRequestId: string | null;
+  platformCallId: string | null;
 }
 
 export interface LlmUsageTotals extends LlmUsage {
@@ -50,14 +39,6 @@ export function llmUsageTotals(): LlmUsageTotals {
 
 export function resetLlmUsage(): void {
   processUsage = { calls: 0, ...ZERO_USAGE };
-}
-
-/** Injectable SDK seam; tests exercise native Messages bodies without network access. */
-export interface MessagesClient {
-  create(
-    input: MessageCreateParamsNonStreaming,
-    options: { signal: AbortSignal; headers?: Record<string, string> },
-  ): Promise<Message & { _request_id?: string | null }>;
 }
 
 export interface LlmConfig {
@@ -85,42 +66,58 @@ export function isCredentialsUnavailable(error: unknown): boolean {
   return error instanceof MissingLlmCredentialsError;
 }
 
+const CompletionResponse = z.object({
+  model: z.string().min(1),
+  choices: z
+    .array(
+      z.object({
+        message: z.object({ content: z.string() }),
+        finish_reason: z.string().nullable().optional(),
+      }),
+    )
+    .min(1),
+  usage: z
+    .object({
+      prompt_tokens: z.number().int().nonnegative(),
+      completion_tokens: z.number().int().nonnegative(),
+    })
+    .optional(),
+  sampling_evidence: SamplingEvidence.optional(),
+});
+
 export class OpenRouterLlmClient {
-  readonly #client: MessagesClient | null;
   readonly #model: string;
   readonly #timeoutMs: number;
   readonly #maxTokens: number;
+  readonly #temperature: number;
   readonly #hostedGateway: boolean;
+  readonly #endpoint: string;
+  readonly #apiKey: string | undefined;
+  readonly #fetch: typeof fetch;
 
   constructor(
     opts: {
-      client?: MessagesClient;
+      fetch?: typeof fetch;
+      baseUrl?: string;
+      apiKey?: string;
       model?: string;
       timeoutMs?: number;
       maxTokens?: number;
+      temperature?: number;
       prefix?: string;
     } = {},
   ) {
     const config = llmConfigFromEnv({ prefix: opts.prefix });
-    this.#model = process.env.COWORLD_LLM_ENDPOINT
-      ? process.env.COWORLD_LLM_MODEL ?? opts.model ?? config.model
-      : opts.model ?? config.model;
+    const endpoint = process.env.COWORLD_LLM_ENDPOINT;
+    this.#hostedGateway = Boolean(endpoint);
+    this.#model =
+      (endpoint ? process.env.COWORLD_LLM_MODEL : undefined) ?? opts.model ?? config.model;
     this.#timeoutMs = opts.timeoutMs ?? config.timeoutMs;
     this.#maxTokens = opts.maxTokens ?? 1024;
-    const endpoint = process.env.COWORLD_LLM_ENDPOINT || undefined;
-    this.#hostedGateway = Boolean(endpoint);
-    const apiKey = endpoint ? "hosted-gateway" : process.env.OPENROUTER_API_KEY;
-    this.#client =
-      opts.client ??
-      (apiKey
-        ? new Anthropic({
-            baseURL: endpoint ?? "https://openrouter.ai/api",
-            apiKey: null,
-            authToken: apiKey,
-            maxRetries: 0,
-            timeout: this.#timeoutMs,
-          }).messages
-        : null);
+    this.#temperature = opts.temperature ?? Number(process.env.COWORLD_LLM_TEMPERATURE ?? 0);
+    this.#endpoint = (endpoint ?? opts.baseUrl ?? "https://openrouter.ai/api").replace(/\/+$/, "");
+    this.#apiKey = endpoint ? "sidecar" : (opts.apiKey ?? process.env.OPENROUTER_API_KEY);
+    this.#fetch = opts.fetch ?? fetch;
   }
 
   get model(): string {
@@ -131,81 +128,108 @@ export class OpenRouterLlmClient {
     system: string;
     slot?: number;
     messages: LlmMessage[];
-    tool?: ToolSpec;
     maxTokens?: number;
     model?: string;
+    recordGeneration: (generation: TextGeneration) => void;
   }): Promise<LlmResult> {
-    if (!this.#client) {
+    if (!this.#apiKey)
       throw new MissingLlmCredentialsError(
         "Set COWORLD_LLM_ENDPOINT or OPENROUTER_API_KEY for LLM play",
       );
-    }
-    const callId = crypto.randomUUID();
-    const input: MessageCreateParamsNonStreaming = {
-      model: this.#hostedGateway ? process.env.COWORLD_LLM_MODEL ?? this.#model : req.model || this.#model,
-      system: req.system,
-      messages: req.messages.map(({ role, text }) => ({ role, content: text })),
+    const messages: TextGeneration["messages"] = [
+      { role: "system", content: req.system },
+      ...req.messages.map(({ role, text }) => ({ role, content: text })),
+    ];
+    const request = {
+      model: this.#hostedGateway ? this.#model : req.model || this.#model,
+      messages,
       max_tokens: req.maxTokens ?? this.#maxTokens,
-      ...(!this.#hostedGateway
-        ? {
-            trace: {
-              trace_id: callId,
-              platform_call_id: callId,
-              generation_name: "anthropic_messages",
-              schema_version: "1",
-              source: "host",
-              metadata_origin: "host_client",
-              caller: "internal_tool",
-            },
-          }
-        : {}),
+      temperature: this.#temperature,
     };
-    if (req.tool) {
-      input.tools = [
-        {
-          name: req.tool.name,
-          description: req.tool.description,
-          input_schema: req.tool.inputSchema as Tool["input_schema"],
-        },
-      ];
-      input.tool_choice = { type: "tool", name: req.tool.name };
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
-    try {
-      const output = await this.#client.create(input, {
-        signal: controller.signal,
-        headers: this.#hostedGateway
-          ? (req.slot === undefined ? {} : { "X-Coworld-Player-Slot": String(req.slot) })
-          : { "X-OpenRouter-Metadata": "enabled" },
-      });
-      const text = output.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("")
-        .trim();
-      const tool = output.content.find((block) => block.type === "tool_use");
-      const usage: LlmUsage = {
-        inputTokens: output.usage.input_tokens,
-        outputTokens: output.usage.output_tokens,
-        cacheReadTokens: output.usage.cache_read_input_tokens ?? 0,
-        cacheWriteTokens: output.usage.cache_creation_input_tokens ?? 0,
-      };
-      processUsage = {
-        calls: processUsage.calls + 1,
-        inputTokens: processUsage.inputTokens + usage.inputTokens,
-        outputTokens: processUsage.outputTokens + usage.outputTokens,
-        cacheReadTokens: processUsage.cacheReadTokens + usage.cacheReadTokens,
-        cacheWriteTokens: processUsage.cacheWriteTokens + usage.cacheWriteTokens,
-      };
-      return {
-        text,
-        usage,
-        providerRequestId: output._request_id,
-        ...(tool ? { toolInput: tool.input } : {}),
-      };
-    } finally {
-      clearTimeout(timer);
-    }
+    const startedAt = performance.now();
+    const generation: TextGeneration = {
+      model: request.model,
+      messages,
+      response: "",
+      inputTokens: null,
+      outputTokens: null,
+      latencyMs: null,
+      inferenceMode: "text_action",
+      platformCallId: null,
+      request,
+      decoder: {
+        temperature: request.temperature,
+        max_tokens: request.max_tokens,
+        timeout_ms: this.#timeoutMs,
+      },
+    };
+    req.recordGeneration(generation);
+    const response = await this.#fetch(`${this.#endpoint}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#apiKey}`,
+        "content-type": "application/json",
+        ...(this.#hostedGateway && req.slot !== undefined
+          ? { "X-Coworld-Player-Slot": String(req.slot) }
+          : {}),
+      },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(this.#timeoutMs),
+    });
+    Object.assign(generation, {
+      latencyMs: performance.now() - startedAt,
+      platformCallId: response.headers.get("X-Softmax-Llm-Call-Id"),
+      modelIdentity: response.headers.get("X-Coworld-Checkpoint-Sha256"),
+      tokenizerIdentity: response.headers.get("X-Coworld-Tokenizer-Sha256"),
+      chatTemplateSha256: response.headers.get("X-Coworld-Chat-Template-Sha256"),
+    });
+    req.recordGeneration(generation);
+    const rawBody = await response.text();
+    Object.assign(generation, {
+      response: rawBody,
+      rawResponse: rawBody,
+      latencyMs: performance.now() - startedAt,
+    });
+    req.recordGeneration(generation);
+    if (!response.ok)
+      throw new GenerationEvidenceError(
+        `Text completion failed (${response.status}): ${rawBody}`,
+        generation,
+      );
+    const rawResponse: unknown = JSON.parse(rawBody);
+    generation.rawResponse = rawResponse;
+    req.recordGeneration(generation);
+    const output = CompletionResponse.parse(rawResponse);
+    const text = output.choices[0]!.message.content;
+    const usage: LlmUsage = {
+      inputTokens: output.usage?.prompt_tokens ?? 0,
+      outputTokens: output.usage?.completion_tokens ?? 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    Object.assign(generation, {
+      model: output.model,
+      response: text,
+      inputTokens: output.usage?.prompt_tokens ?? null,
+      outputTokens: output.usage?.completion_tokens ?? null,
+      stopReason: output.choices[0]!.finish_reason,
+      samplingEvidence: output.sampling_evidence,
+      latencyMs: performance.now() - startedAt,
+    });
+    req.recordGeneration(generation);
+    processUsage = {
+      calls: processUsage.calls + 1,
+      inputTokens: processUsage.inputTokens + usage.inputTokens,
+      outputTokens: processUsage.outputTokens + usage.outputTokens,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    return {
+      text,
+      usage,
+      generation,
+      platformCallId: generation.platformCallId ?? null,
+      providerRequestId: response.headers.get("x-request-id"),
+    };
   }
 }

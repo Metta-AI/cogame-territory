@@ -10,10 +10,27 @@ import { robustDecide } from "../src/robust-decide";
 import { OpenRouterLlmClient, type LlmResult } from "../src/openrouter";
 
 const zeroUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
-const reply = (text: string): LlmResult => ({ text, usage: zeroUsage });
+const reply = (text: string): LlmResult => ({
+  text,
+  usage: zeroUsage,
+  providerRequestId: null,
+  platformCallId: null,
+  generation: {
+    model: "fixture",
+    messages: [{ role: "user", content: "u" }],
+    response: text,
+    inputTokens: null,
+    outputTokens: null,
+    latencyMs: null,
+    inferenceMode: "text_action",
+  },
+});
 
 /** A client whose Nth `converse` call does whatever the Nth entry says. */
-function fakeClient(script: Array<LlmResult | Error>): { client: OpenRouterLlmClient; calls: () => number } {
+function fakeClient(script: Array<LlmResult | Error>): {
+  client: OpenRouterLlmClient;
+  calls: () => number;
+} {
   let calls = 0;
   const client = {
     complete: async (): Promise<LlmResult> => {
@@ -26,7 +43,8 @@ function fakeClient(script: Array<LlmResult | Error>): { client: OpenRouterLlmCl
   return { client, calls: () => calls };
 }
 
-const throttle = (): Error => Object.assign(new Error("Too many requests"), { name: "ThrottlingException" });
+const throttle = (): Error =>
+  Object.assign(new Error("Too many requests"), { name: "ThrottlingException" });
 afterEach(() => vi.unstubAllEnvs());
 
 interface Move {
@@ -51,6 +69,7 @@ async function run(
     baseline: () => ({ move: "scripted" }),
     recordAttempt: (a) => attempts.push({ error: a.error }),
     maxAttempts,
+    markFallback: () => {},
   });
   return { decision, attempts, calls: calls() };
 }
@@ -75,7 +94,9 @@ describe("robustDecide on a transport failure", () => {
   it("plays the baseline IMMEDIATELY on a no-credentials error, with no retry storm", async () => {
     vi.stubEnv("COWORLD_LLM_ENDPOINT", "");
     vi.stubEnv("OPENROUTER_API_KEY", "");
-    const error = await new OpenRouterLlmClient().complete({ system: "s", messages: [] }).catch((error) => error);
+    const error = await new OpenRouterLlmClient()
+      .complete({ system: "s", messages: [], recordGeneration: () => {} })
+      .catch((error) => error);
     const out = await run([error, error]);
     expect(out.decision).toEqual({ move: "scripted" });
     expect(out.calls).toBe(1);
