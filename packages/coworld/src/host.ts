@@ -30,7 +30,7 @@ import type { GameModule, ObservedMessage, SeatPilot } from "@cogweb/core";
 import { llmUsageTotals, MessageBus } from "@cogweb/llm";
 import type { Audience, FeedEvent, ServerMessage } from "@cogweb/protocol";
 
-import { RemotePlayerPilot } from "./remote-pilot";
+import { RemotePlayerPilot, type TalkDelivery } from "./remote-pilot";
 import { readConfig, writeResults, writeReplay, writeTrajectory, hasReplayUri } from "./artifacts";
 import { PROTOCOL, type TalkLine } from "./protocol";
 
@@ -259,17 +259,21 @@ export async function runCoworldHost<State, Decision, Results>(
   // Assigned once the replay/spectator fan-out exists (below). A talk line can only
   // arrive after a player has acted, which is strictly after that wiring is in place.
   let emitFrame: (m: ServerMessage) => void = () => {};
-  const onTalk = (seat: number, turn: number, lines: TalkLine[]): void => {
-    for (const line of lines) {
+  const onTalk = (seat: number, turn: number, lines: TalkLine[]): TalkDelivery => {
+    if (
+      lines.some(
+        (line) => line.to !== null && (line.to === seat || line.to < 0 || line.to >= slots),
+      )
+    )
+      return { kind: "rejected", reason: "Private recipient must be another external player slot" };
+    const messages = lines
+      .map((line) => ({ ...line, text: line.text.trim() }))
+      .filter((line) => line.text.length > 0);
+    for (const line of messages) {
       const text = line.text.trim();
       if (!text) continue;
-      // Resolve the recipient: a real OTHER slot is a private aside, everything else
-      // (self / out-of-range / absent) is a public broadcast. `visibleToSeat` folds
-      // the sender into its own DM, so it always sees its own line.
-      const to: Audience =
-        line.to == null || line.to === seat || line.to < 0 || line.to >= slots
-          ? "public"
-          : [line.to];
+      // Only an explicit null recipient broadcasts. Valid private recipients remain private.
+      const to: Audience = line.to === null ? "public" : [line.to];
       bus.post({ from: seat, to, text, turn });
       if (to === "public")
         emitFrame({
@@ -277,6 +281,7 @@ export async function runCoworldHost<State, Decision, Results>(
           event: { turn, seat, kind: "talk", text, to } satisfies FeedEvent,
         });
     }
+    return { kind: "accepted", messages };
   };
 
   // Per slot the two ends meet here: a `role=pilot` socket is the game-side
@@ -417,7 +422,7 @@ export async function runCoworldHost<State, Decision, Results>(
   const decisions: unknown[] = [];
   const environmentDecisions: unknown[] = [];
   const provenance = {
-    game: opts.module.game.id,
+    game: process.env.COWORLD_GAME_NAME ?? opts.module.game.id,
     game_version: process.env.COWORLD_GAME_VERSION ?? null,
     source_revision: process.env.COWORLD_SOURCE_REVISION ?? null,
     image_digest: process.env.COWORLD_GAME_IMAGE_DIGEST ?? null,
