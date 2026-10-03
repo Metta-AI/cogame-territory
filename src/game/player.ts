@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 // The ONE player entrypoint, shipped in the SAME image as the game and selected
 // by env — `dist-server/game/player.js`, shimmed as `/bin/territory-player`:
 //
@@ -21,7 +22,7 @@ import { SubmissionSchema } from "../shared/engine/orders.js";
 import { territoryModule } from "./game.js";
 import type { TerritoryDecision, TerritorySeamState, TerritoryView } from "./game.js";
 import type { TerritoryObservation } from "./redact.js";
-import { renderObservation, SUBMIT_TURN_TOOL, systemPrompt } from "./prompt.js";
+import { renderPlayerMessages } from "./prompt.js";
 import { scriptedDecide } from "./scripted.js";
 
 type Ctx = PlayerDecideContext<TerritorySeamState, TerritoryDecision, TerritoryView>;
@@ -41,24 +42,27 @@ const fallbackMove = (baseline: string, view: TerritoryObservation): TerritoryDe
 
 /** The LLM policy: Bedrock haiku via `robustDecide`, the doctrine folded into the
  *  system prompt, the scripted baseline as the terminal fallback. */
-export function makeLlmDecide(doctrine: string, baseline: string): (ctx: Ctx) => Promise<TerritoryDecision> {
+export function makeLlmDecide(
+  doctrine: string,
+  baseline: string,
+): (ctx: Ctx) => Promise<TerritoryDecision> {
   const model = env.COWORLD_LLM_MODEL?.trim() || DEFAULT_MODEL;
   const client = new OpenRouterLlmClient({
     model,
     maxTokens: MAX_TOKENS,
   });
-  const system = systemPrompt(doctrine);
   return async (ctx) => {
     const view = ctx.view as TerritoryObservation;
+    const messages = renderPlayerMessages(view, doctrine, ctx.reason);
     let usedFallback = true;
     const decision = await robustDecide<TerritoryDecision>({
       client,
-      system,
+      purpose: { kind: "learner" },
+      signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(client.timeoutMs)]),
+      slot: ctx.playerSlot,
+      system: messages[0]!.content,
       renderUser: (rejection) => {
-        const host = ctx.reason
-          ? `\n\nThe game rejected your previous move: ${ctx.reason}. Choose a different legal move.`
-          : "";
-        return renderObservation(view) + host + (rejection ? `\n\n${rejection}` : "");
+        return messages[1]!.content + (rejection ? `\n\n${rejection}` : "");
       },
       validate: (candidate) => {
         const parsed = SubmissionSchema.parse(candidate);
@@ -66,8 +70,8 @@ export function makeLlmDecide(doctrine: string, baseline: string): (ctx: Ctx) =>
         return parsed;
       },
       baseline: () => fallbackMove(baseline, view),
-      tool: SUBMIT_TURN_TOOL,
-      recordAttempt: () => {},
+      recordAttempt: ctx.recordAttempt,
+      markFallback: ctx.markFallback,
       maxAttempts: MAX_ATTEMPTS,
     });
     if (usedFallback) {
@@ -80,8 +84,10 @@ export function makeLlmDecide(doctrine: string, baseline: string): (ctx: Ctx) =>
 }
 
 /** The scripted policy: a pure function of the view, no model, no network. */
-export const makeScriptedDecide = (baseline: string) => (ctx: Ctx): TerritoryDecision =>
-  scriptedDecide(baseline, ctx.view as TerritoryObservation);
+export const makeScriptedDecide =
+  (baseline: string) =>
+  (ctx: Ctx): TerritoryDecision =>
+    scriptedDecide(baseline, ctx.view as TerritoryObservation);
 
 /** Choose the policy from the environment and play the slot to `final`. */
 export function run(): Promise<number[]> {
@@ -90,7 +96,9 @@ export function run(): Promise<number[]> {
   // Hosted prompt policies receive native sidecar access through --use-llm.
   const baseline = scripted && scripted !== "" ? scripted : "homesteader";
   if (prompt && !scripted) {
-    console.log(`[territory-player] LLM policy (model ${env.COWORLD_LLM_MODEL ?? DEFAULT_MODEL}, fallback ${baseline})`);
+    console.log(
+      `[territory-player] LLM policy (model ${env.COWORLD_LLM_MODEL ?? DEFAULT_MODEL}, fallback ${baseline})`,
+    );
     return runCoworldPlayer<TerritorySeamState, TerritoryDecision, TerritoryView>({
       module: territoryModule,
       decide: makeLlmDecide(prompt, baseline),
@@ -104,6 +112,6 @@ export function run(): Promise<number[]> {
 }
 
 // Run only when invoked as the entrypoint, not when imported by a test.
-if (argv[1] === fileURLToPath(import.meta.url)) {
+if (realpathSync(argv[1]!) === fileURLToPath(import.meta.url)) {
   await run();
 }

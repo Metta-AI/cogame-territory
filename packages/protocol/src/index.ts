@@ -136,15 +136,94 @@ export type FeedEvent = z.infer<typeof FeedEvent>;
 // Autopilot transcript ("what the model saw & decided")
 // ---------------------------------------------------------------------------
 
+/** Native sampler evidence; these are emitted at draw time, never reconstructed. */
+export const SamplingEvidence = z.object({
+  policy_revision: z.string(),
+  tokenizer_revision: z.string(),
+  chat_template: z.string(),
+  sampling: z.literal("full_softmax_temperature_one"),
+  enable_thinking: z.literal(false),
+  max_new_tokens: z.number().int().positive(),
+  max_sequence_length: z.number().int().positive(),
+  sampling_seed: z.number().int(),
+  eos_token_ids: z.array(z.number().int()),
+  prompt_token_ids: z.array(z.number().int()),
+  completion_token_ids: z.array(z.number().int()),
+  behavior_log_probs: z.array(z.number()),
+  stop_reason: z.enum(["eos", "length"]),
+  response: z.string(),
+});
+export type SamplingEvidence = z.infer<typeof SamplingEvidence>;
+
+export const GenerationPurpose = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("learner") }),
+  z.object({
+    kind: z.literal("environment"),
+    model: z.string().min(1),
+    decoder: z.object({
+      maxTokens: z.number().int().positive(),
+      temperature: z.number().nonnegative(),
+      topP: z.number().min(0).max(1),
+    }),
+  }),
+]);
+export type GenerationPurpose = z.infer<typeof GenerationPurpose>;
+
+export const TextGeneration = z.object({
+  purpose: GenerationPurpose.optional(),
+  responseHeaders: z.record(z.string()).optional(),
+  providerRequestId: z.string().nullable().optional(),
+  model: z.string().min(1),
+  messages: z
+    .array(z.object({ role: z.enum(["system", "user", "assistant"]), content: z.string() }))
+    .min(1),
+  response: z.string(),
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+  /** Null until a response supplies an observed elapsed duration. */
+  latencyMs: z.number().nonnegative().nullable(),
+  inferenceMode: z.enum(["text_action", "candidate", "system_one"]).optional(),
+  platformCallId: z.string().uuid().nullable().optional(),
+  request: z.unknown().optional(),
+  rawResponse: z.unknown().optional(),
+  decoder: z.unknown().optional(),
+  stopReason: z.string().nullable().optional(),
+  samplingEvidence: SamplingEvidence.optional(),
+  modelIdentity: z.string().nullable().optional(),
+  tokenizerIdentity: z.string().nullable().optional(),
+  chatTemplateSha256: z.string().nullable().optional(),
+});
+export type TextGeneration = z.infer<typeof TextGeneration>;
+
+export class GenerationEvidenceError extends Error {
+  constructor(
+    message: string,
+    readonly generation: TextGeneration,
+  ) {
+    super(message);
+  }
+}
+
 export const ActAttempt = z.object({
+  purpose: GenerationPurpose.optional(),
   prompt: z.string(),
   response: z.string(),
   /** Rejection reason if this attempt was illegal/unparseable, else null. */
   error: z.string().nullable(),
+  /** Provider request identifier when the model transport exposes one. */
+  providerRequestId: z.string().nullable().optional(),
+  /** Platform generation/call correlation when supplied by the transport. */
+  generationId: z.string().nullable().optional(),
+  platformCallId: z.string().nullable().optional(),
+  /** Exact chat request and raw response returned by a remote text model. */
+  generation: TextGeneration.optional(),
+  parsedAction: z.unknown().optional(),
 });
 export type ActAttempt = z.infer<typeof ActAttempt>;
 
 export const ActPromptWire = z.object({
+  /** Applied public game action, separate from private inference evidence. */
+  executedAction: z.unknown().optional(),
   turn: z.number().int(),
   seat: z.number().int(),
   phase: z.string().nullable(),
@@ -224,10 +303,7 @@ export function seatPilotKind(seat: SeatInfo): "open" | "human" | "bot" {
  *  control (`@cogweb/ui`) and the server-side `lobby.start()`, so an empty or
  *  partially-filled table can never start and a full, ready one always can. */
 export function lobbyCanStart(lobby: LobbyState, minPlayers: number): boolean {
-  return (
-    lobby.seats.length >= minPlayers &&
-    lobby.seats.every((s) => s.kind !== "open" && s.ready)
-  );
+  return lobby.seats.length >= minPlayers && lobby.seats.every((s) => s.kind !== "open" && s.ready);
 }
 
 // ---------------------------------------------------------------------------
@@ -313,7 +389,11 @@ export const ClientMessage = z.discriminatedUnion("type", [
   // turn decision (so a game can drop a discrete "talk" phase and let players talk
   // freely). `to` is "public" (everyone) or a seat list for a DM; the server posts
   // it as a `talk` FeedEvent the instant it arrives, redacted to the audience.
-  z.object({ type: z.literal("say"), text: z.string().min(1).max(2000), to: Audience.default("public") }),
+  z.object({
+    type: z.literal("say"),
+    text: z.string().min(1).max(2000),
+    to: Audience.default("public"),
+  }),
   // A seated player toggles READY during a free-form timed phase (a discussion
   // window). When every human-controlled seat is ready the runner ends the window
   // early instead of waiting out the clock.

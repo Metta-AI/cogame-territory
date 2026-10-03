@@ -9,7 +9,15 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { parseClientMessage } from "@cogweb/protocol";
-import type { ServerMessage, ClientMessage, BotSpec, Snapshot, RunStatus, FeedEvent, Audience } from "@cogweb/protocol";
+import type {
+  ServerMessage,
+  ClientMessage,
+  BotSpec,
+  Snapshot,
+  RunStatus,
+  FeedEvent,
+  Audience,
+} from "@cogweb/protocol";
 import type { GameModule } from "./game";
 import type { Pilot } from "./pilot";
 import type { Lobby } from "./lobby";
@@ -182,6 +190,7 @@ export function attachWebSocket<State, Decision>(
       const spec = botSeats.get(seat.seat);
       if (spec) {
         pilots.set(seat.seat, {
+          purpose: "learner",
           pilot: deps.makeBotPilot(seat.seat, spec),
           guidance: spec.guidance,
           model: spec.model,
@@ -189,7 +198,13 @@ export function attachWebSocket<State, Decision>(
         });
       } else {
         // A human seat with autopilot off: the shared HumanPilot drives it.
-        pilots.set(seat.seat, { pilot: humanPilot, guidance: "", model: null, name: seat.name });
+        pilots.set(seat.seat, {
+          purpose: "learner",
+          pilot: humanPilot,
+          guidance: "",
+          model: null,
+          name: seat.name,
+        });
       }
     }
     const r = new GameRunner<State, Decision>(module, pilots, {
@@ -234,7 +249,13 @@ export function attachWebSocket<State, Decision>(
     humanPilot.cancel(seat);
     const spec = lobby.botControlLive(seat, null);
     const name = lobby.state().seats.find((s) => s.seat === seat)?.name ?? "";
-    runner?.setSeatPilot(seat, { pilot: deps.makeBotPilot(seat, spec), guidance: spec.guidance, model: spec.model, name });
+    runner?.setSeatPilot(seat, {
+      purpose: "learner",
+      pilot: deps.makeBotPilot(seat, spec),
+      guidance: spec.guidance,
+      model: spec.model,
+      name,
+    });
   };
 
   /** Route a connection-agnostic frame. The seat-bound frames (join, setReady,
@@ -242,7 +263,10 @@ export function attachWebSocket<State, Decision>(
    *  per-socket message listener; everything here targets an explicit seat or the
    *  whole table. */
   const handle = (
-    msg: Exclude<ClientMessage, { type: "join" | "setReady" | "decision" | "say" | "takeControl" | "releaseControl" }>,
+    msg: Exclude<
+      ClientMessage,
+      { type: "join" | "setReady" | "decision" | "say" | "takeControl" | "releaseControl" }
+    >,
   ): void => {
     switch (msg.type) {
       case "addBot":
@@ -269,6 +293,7 @@ export function attachWebSocket<State, Decision>(
             // runner sees the pilot already swapped when that turn's reject lands, so it
             // re-drives the in-flight turn with the bot instead of playing baseline.
             runner.setSeatPilot(msg.seat, {
+              purpose: "learner",
               pilot: deps.makeBotPilot(msg.seat, spec),
               guidance: spec.guidance,
               model: spec.model,
@@ -276,7 +301,13 @@ export function attachWebSocket<State, Decision>(
             });
             humanPilot.cancel(msg.seat);
           } else {
-            runner.setSeatPilot(msg.seat, { pilot: humanPilot, guidance: "", model: null, name });
+            runner.setSeatPilot(msg.seat, {
+              purpose: "learner",
+              pilot: humanPilot,
+              guidance: "",
+              model: null,
+              name,
+            });
           }
         }
         return;
@@ -336,7 +367,8 @@ export function attachWebSocket<State, Decision>(
     // turns broadcast after it connected.
     sendTo(ws, { type: "lobby", lobby: lobby.state() });
     if (runner) {
-      for (const snapshot of runner.snapshotHistory(conn.ownSeat)) sendTo(ws, { type: "snapshot", snapshot });
+      for (const snapshot of runner.snapshotHistory(conn.ownSeat))
+        sendTo(ws, { type: "snapshot", snapshot });
       // Replay this generation's feed so a late/reconnecting client sees the full
       // log (e.g. the one-shot start-of-game persona), not just frames from now on.
       // Audience-filtered to the (spectator) seat; runs synchronously at connect, so
@@ -366,7 +398,8 @@ export function attachWebSocket<State, Decision>(
           // a bot, so grabbing a new one MOVES you (the table only ever holds humans
           // and bots — never an empty seat left behind). Lobby-only; mid-game a reclaim
           // arrives on a FRESH socket (prevSeat null), so this never runs there.
-          if (prevSeat !== null && prevSeat !== seat && lobby.phase() === "lobby") lobby.addBot(prevSeat, null);
+          if (prevSeat !== null && prevSeat !== seat && lobby.phase() === "lobby")
+            lobby.addBot(prevSeat, null);
           // A sticky-session reclaim (reload/reconnect) lands on a NEW socket while
           // the player's OLD socket may still be registered for this seat. Drop the
           // old socket's claim so its eventual close() can't flip the seat back to
@@ -417,12 +450,19 @@ export function attachWebSocket<State, Decision>(
           lobby.takeControlLive(msg.seat, msg.name);
           conn.ownSeat = msg.seat;
           conn.liveSeat = msg.seat;
-          runner.setSeatPilot(msg.seat, { pilot: humanPilot, guidance: "", model: null, name: msg.name });
+          runner.setSeatPilot(msg.seat, {
+            purpose: "learner",
+            pilot: humanPilot,
+            guidance: "",
+            model: null,
+            name: msg.name,
+          });
           sendSnapshotTo(ws, conn); // re-send through the newly-controlled seat's eyes
           return;
         }
         if (msg.type === "releaseControl") {
-          if (conn.liveSeat !== msg.seat) throw new WsRoutingError(`not controlling seat ${msg.seat}`);
+          if (conn.liveSeat !== msg.seat)
+            throw new WsRoutingError(`not controlling seat ${msg.seat}`);
           releaseToBot(msg.seat);
           conn.ownSeat = null;
           conn.liveSeat = null;
@@ -431,7 +471,9 @@ export function attachWebSocket<State, Decision>(
         }
         handle(msg);
       } catch (err) {
-        console.warn(`[cogweb] dropped a bad client message: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(
+          `[cogweb] dropped a bad client message: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     });
 

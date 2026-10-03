@@ -16,7 +16,7 @@
 // routes them through a per-episode message bus — the engine never reads them, so a
 // policy that ignores talk is unaffected (it just sends/receives an empty list).
 import { z } from "zod";
-import { Audience } from "@cogweb/protocol";
+import { Audience, ActAttempt } from "@cogweb/protocol";
 
 export const PROTOCOL = "cogweb.player.v1";
 
@@ -76,10 +76,13 @@ export const FinalMessage = z.object({
 });
 export type FinalMessage = z.infer<typeof FinalMessage>;
 
+export const CancelMessage = z.object({ type: z.literal("cancel"), id: z.number().int() });
+export type CancelMessage = z.infer<typeof CancelMessage>;
 export const GameToPlayer = z.discriminatedUnion("type", [
   WelcomeMessage,
   ObservationMessage,
   FinalMessage,
+  CancelMessage,
 ]);
 export type GameToPlayer = z.infer<typeof GameToPlayer>;
 
@@ -94,10 +97,27 @@ export const ReplyMessage = z.object({
   /** 0+ cheap-talk lines to post alongside this reply (the host routes them to the
    *  episode bus). Empty for a policy that doesn't talk. */
   messages: z.array(TalkLine).default([]),
+  attempts: z.array(ActAttempt).optional(),
+  speechAttempts: z.array(ActAttempt).optional(),
+  usedFallback: z.boolean().optional(),
 });
 export type ReplyMessage = z.infer<typeof ReplyMessage>;
 
-export const PlayerToGame = z.discriminatedUnion("type", [ReplyMessage]);
+export const FailureMessage = z.object({
+  type: z.literal("failure"),
+  id: z.number().int(),
+  error: z.string(),
+  attempts: z.array(ActAttempt),
+  speechAttempts: z.array(ActAttempt),
+});
+export type FailureMessage = z.infer<typeof FailureMessage>;
+export const ArtifactCompleteMessage = z.object({ type: z.literal("artifact_complete") });
+export type ArtifactCompleteMessage = z.infer<typeof ArtifactCompleteMessage>;
+export const PlayerToGame = z.discriminatedUnion("type", [
+  ReplyMessage,
+  FailureMessage,
+  ArtifactCompleteMessage,
+]);
 export type PlayerToGame = z.infer<typeof PlayerToGame>;
 
 export function parseGameToPlayer(raw: unknown): GameToPlayer {
@@ -106,4 +126,23 @@ export function parseGameToPlayer(raw: unknown): GameToPlayer {
 
 export function parsePlayerToGame(raw: unknown): PlayerToGame {
   return PlayerToGame.parse(raw);
+}
+
+/** Shared JSON-text boundary for the authenticated host bridge and remote pilot. */
+export function parsePlayerFrame(
+  text: string,
+):
+  | { kind: "message"; message: PlayerToGame }
+  | { kind: "invalid_json" }
+  | { kind: "invalid_schema"; error: string } {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { kind: "invalid_json" };
+  }
+  const parsed = PlayerToGame.safeParse(json);
+  return parsed.success
+    ? { kind: "message", message: parsed.data }
+    : { kind: "invalid_schema", error: parsed.error.message };
 }

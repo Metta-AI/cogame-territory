@@ -1,201 +1,145 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  OpenRouterLlmClient,
-  isCredentialsUnavailable,
-  llmConfigFromEnv,
-  llmUsageTotals,
-  resetLlmUsage,
-  type MessagesClient,
-} from "../src/openrouter.js";
-import type { Game } from "@cogweb/core";
-import { LlmPilot } from "../src/llm-pilot.js";
+import { recordAttemptSnapshot } from "@cogweb/core";
+import type { ActAttempt, TextGeneration } from "@cogweb/protocol";
+import { OpenRouterLlmClient, llmUsageTotals, resetLlmUsage } from "../src/openrouter.js";
 import { robustDecide } from "../src/robust-decide.js";
 
-const ping = { system: "system", messages: [{ role: "user" as const, text: "observation" }] };
+const callId = "01234567-89ab-4cde-8123-456789abcdef";
 const response = {
-  id: "msg_test",
-  type: "message",
-  role: "assistant",
-  model: "anthropic/claude-haiku-4.5",
-  content: [
-    { type: "text", text: "answer", citations: null },
-    { type: "tool_use", id: "t", name: "move", input: { take: 2 } },
-  ],
-  stop_reason: "tool_use",
-  stop_sequence: null,
-  stop_details: null,
-  container: null,
-  usage: {
-    input_tokens: 100,
-    output_tokens: 20,
-    cache_read_input_tokens: 7,
-    cache_creation_input_tokens: 3,
-    cache_creation: null,
-    inference_geo: null,
-    output_tokens_details: null,
-    server_tool_use: null,
-    service_tier: null,
-  },
+  model: "checkpoint/test",
+  choices: [{ message: { content: '{"take":2}' }, finish_reason: "stop" }],
+  usage: { prompt_tokens: 100, completion_tokens: 20 },
 };
-
+const ping = {
+  system: "rules",
+  messages: [{ role: "user" as const, text: "private observation" }],
+};
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
   resetLlmUsage();
 });
 
-describe("native OpenRouter messages", () => {
-  it("sends native tools to the hosted endpoint without forwarding a real credential", async () => {
-    vi.stubEnv("COWORLD_LLM_ENDPOINT", "http://127.0.0.1:9100");
-    vi.stubEnv("OPENROUTER_API_KEY", "must-not-leave-host");
-    const fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify(response), {
-          headers: { "content-type": "application/json", "request-id": "native-request-test" },
-        }),
-    );
-    vi.stubGlobal("fetch", fetch);
-    vi.stubEnv("COWORLD_LLM_MODEL", "anthropic/claude-sonnet-4.6");
-    const client = new OpenRouterLlmClient({ model: "retired-model" });
-    const result = await client.complete({
-      ...ping,
-      slot: 2,
-      tool: { name: "move", description: "Choose a move", inputSchema: { type: "object" } },
-    });
-    const call = fetch.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
-    expect(String(call[0])).toBe("http://127.0.0.1:9100/v1/messages");
-    expect(new Headers(call[1].headers).get("authorization")).toBe("Bearer hosted-gateway");
-    const body = JSON.parse(String(call[1].body));
-    expect(body).toMatchObject({
-      model: "anthropic/claude-sonnet-4.6",
-      system: "system",
-      messages: [{ role: "user", content: "observation" }],
-      max_tokens: 1024,
-      tool_choice: { type: "tool", name: "move" },
-    });
-    expect(body.trace).toBeUndefined();
-    expect(new Headers(call[1].headers).get("X-Coworld-Player-Slot")).toBe("2");
-    expect(new Headers(call[1].headers).has("X-OpenRouter-Metadata")).toBe(false);
-    expect(body.tools[0].input_schema).toEqual({ type: "object" });
-    expect(result.toolInput).toEqual({ take: 2 });
-    expect(result.text).toBe("answer");
-    expect(result.providerRequestId).toBe("native-request-test");
-    expect(result.usage).toEqual({
-      inputTokens: 100,
-      outputTokens: 20,
-      cacheReadTokens: 7,
-      cacheWriteTokens: 3,
-    });
-    await client.complete(ping);
-    expect(llmUsageTotals()).toEqual({
-      calls: 2,
-      inputTokens: 200,
-      outputTokens: 40,
-      cacheReadTokens: 14,
-      cacheWriteTokens: 6,
-    });
-  });
-
-  it("attributes a game-hosted pilot decision to the acting seat", async () => {
+describe("native direct text action", () => {
+  it("uses the canonical sidecar model and preserves the exact text/body/call identity", async () => {
     vi.stubEnv("COWORLD_LLM_ENDPOINT", "http://sidecar");
-    vi.stubEnv("COWORLD_LLM_MODEL", "anthropic/claude-sonnet-4.6");
-    const create = vi.fn<MessagesClient["create"]>().mockResolvedValue(response as never);
-    const pilot = new LlmPilot<null, number>({
-      client: new OpenRouterLlmClient({ client: { create }, model: "retired-model" }),
-      autopilot: {
-        systemPrompt: () => "rules", renderObservation: () => "private view",
-        tool: () => ({ name: "move", description: "move", inputSchema: { type: "object" } }),
+    vi.stubEnv("COWORLD_LLM_MODEL", "checkpoint/test");
+    vi.stubEnv("OPENROUTER_API_KEY", "must-not-leave-host");
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify(response), {
+        headers: { "X-Softmax-Llm-Call-Id": callId, "X-Coworld-Checkpoint-Sha256": "weights-sha" },
+      }),
+    );
+    let generation: TextGeneration | undefined;
+    const result = await new OpenRouterLlmClient({ fetch }).complete({
+      purpose: { kind: "learner" },
+      signal: AbortSignal.timeout(30_000),
+      ...ping,
+      slot: 8,
+      recordGeneration: (g) => {
+        generation = g;
       },
-      modelFor: () => "", messagesFor: () => [],
     });
-    const game = { baselineDecision: () => 0 } as unknown as Game<null, number>;
-    const result = await pilot.decide({ game, state: null, seat: 1, guidance: [],
-      validate: (candidate: unknown) => (candidate as { take: number }).take,
-      recordAttempt: () => {},
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe("http://sidecar/v1/chat/completions");
+    const headers = new Headers(init!.headers);
+    expect(headers.get("authorization")).toBe("Bearer sidecar");
+    expect(headers.get("X-Coworld-Player-Slot")).toBe("8");
+    const request = JSON.parse(String(init!.body));
+    expect(request).toEqual({
+      model: "checkpoint/test",
+      messages: [
+        { role: "system", content: "rules" },
+        { role: "user", content: "private observation" },
+      ],
+      temperature: 0,
+      max_tokens: 1024,
     });
-    expect(result).toBe(2);
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0]![0].model).toBe("anthropic/claude-sonnet-4.6");
-    expect(create.mock.calls[0]![1].headers?.["X-Coworld-Player-Slot"]).toBe("1");
-  });
-
-  it("uses direct OpenRouter bearer authentication for local play", async () => {
-    vi.stubEnv("COWORLD_LLM_ENDPOINT", "");
-    vi.stubEnv("OPENROUTER_API_KEY", "local-test-key");
-    const fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } }),
-    );
-    vi.stubGlobal("fetch", fetch);
-    const client = new OpenRouterLlmClient();
-    await client.complete(ping);
-    await client.complete(ping);
-    const call = fetch.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
-    expect(String(call[0])).toBe("https://openrouter.ai/api/v1/messages");
-    expect(new Headers(call[1].headers).get("authorization")).toBe("Bearer local-test-key");
-    expect(new Headers(call[1].headers).get("X-OpenRouter-Metadata")).toBe("enabled");
-    const { trace } = JSON.parse(String(call[1].body));
-    expect(trace).toEqual({
-      trace_id: expect.stringMatching(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      ),
-      platform_call_id: trace.trace_id,
-      generation_name: "anthropic_messages",
-      schema_version: "1",
-      source: "host",
-      metadata_origin: "host_client",
-      caller: "internal_tool",
+    expect(result.text).toBe('{"take":2}');
+    expect(generation).toMatchObject({
+      request,
+      rawResponse: JSON.stringify(response),
+      platformCallId: callId,
+      modelIdentity: "weights-sha",
+      inferenceMode: "text_action",
+      response: result.text,
     });
-    const nextCall = fetch.mock.calls[1] as unknown as [string | URL | Request, RequestInit];
-    const nextTrace = JSON.parse(String(nextCall[1].body)).trace;
-    expect(nextTrace.platform_call_id).toBe(nextTrace.trace_id);
-    expect(nextTrace.trace_id).not.toBe(trace.trace_id);
+    expect(llmUsageTotals()).toMatchObject({ calls: 1, inputTokens: 100, outputTokens: 20 });
   });
 
-  it("falls back immediately only when local configuration is absent", async () => {
-    vi.stubEnv("COWORLD_LLM_ENDPOINT", "");
-    vi.stubEnv("OPENROUTER_API_KEY", "");
-    const client = new OpenRouterLlmClient();
-    await expect(client.complete(ping)).rejects.toSatisfy(isCredentialsUnavailable);
-    expect(
-      await robustDecide({
-        client,
-        system: "s",
-        renderUser: () => "u",
-        validate: () => 2,
-        baseline: () => 1,
-        recordAttempt: () => {},
-      }),
-    ).toBe(1);
-    expect(llmUsageTotals().calls).toBe(0);
-  });
+  it.each(["http", "malformed", "network"])(
+    "keeps failed %s request evidence without inventing a call ID",
+    async (kind) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      if (kind === "network") fetch.mockRejectedValue(new Error("network timeout"));
+      else
+        fetch.mockResolvedValue(
+          new Response(kind === "http" ? "provider rejected" : "not JSON", {
+            status: kind === "http" ? 429 : 200,
+            headers: { "X-Softmax-Llm-Call-Id": callId },
+          }),
+        );
+      const attempts: ActAttempt[] = [];
+      const markFallback = vi.fn();
+      const decision = await robustDecide({
+        purpose: { kind: "learner" },
+        signal: AbortSignal.timeout(30_000),
+        client: new OpenRouterLlmClient({ fetch, apiKey: "local-test-key" }),
+        system: ping.system,
+        renderUser: () => ping.messages[0]!.text,
+        validate: () => ({ take: 2 }),
+        baseline: () => ({ take: 0 }),
+        recordAttempt: (a) => recordAttemptSnapshot(attempts, a),
+        markFallback,
+        maxAttempts: 1,
+      });
+      expect(decision).toEqual({ take: 0 });
+      expect(markFallback).toHaveBeenCalledOnce();
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]!.generation!.request).toMatchObject({
+        messages: [
+          { role: "system", content: "rules" },
+          { role: "user", content: "private observation" },
+        ],
+      });
+      expect(attempts[0]!.platformCallId).toBe(kind === "network" ? null : callId);
+      expect(attempts[0]!.generation!.rawResponse).toBe(
+        kind === "network" ? undefined : kind === "http" ? "provider rejected" : "not JSON",
+      );
+      expect(attempts[0]!.generation!.latencyMs).toEqual(expect.any(Number));
+    },
+  );
 
-  it("surfaces transport failures without trying another model", async () => {
-    const create = vi.fn<MessagesClient["create"]>().mockRejectedValue(new Error("rate limited"));
-    await expect(new OpenRouterLlmClient({ client: { create } }).complete(ping)).rejects.toThrow(
-      "rate limited",
-    );
-    expect(create).toHaveBeenCalledTimes(1);
-  });
-
-  it("aborts a stalled request at the configured timeout", async () => {
-    const client: MessagesClient = {
-      create: (_input, { signal }) =>
-        new Promise((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(new Error("aborted")));
-        }),
-    };
-    await expect(new OpenRouterLlmClient({ client, timeoutMs: 5 }).complete(ping)).rejects.toThrow(
-      "aborted",
-    );
-  });
-
-  it("resolves prefixed native model and timeout settings", () => {
-    expect(
-      llmConfigFromEnv({
-        prefix: "GAME",
-        env: { GAME_LLM_MODEL: "anthropic/claude-sonnet-4.5", GAME_LLM_TIMEOUT_MS: "5000" },
-      }),
-    ).toEqual({ model: "anthropic/claude-sonnet-4.5", timeoutMs: 5000 });
+  it("records rejected text and exact re-rendered retry before selecting a valid parsed action", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ ...response, choices: [{ message: { content: '{"take":-1}' } }] }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(response)));
+    const attempts: ActAttempt[] = [];
+    const markFallback = vi.fn();
+    const result = await robustDecide({
+      purpose: { kind: "learner" },
+      signal: AbortSignal.timeout(30_000),
+      client: new OpenRouterLlmClient({ fetch, apiKey: "fixture" }),
+      system: "rules",
+      renderUser: (reason) => (reason ? `view\n${reason}` : "view"),
+      validate: (candidate) => {
+        const parsed = candidate as { take: number };
+        if (parsed.take < 0) throw new Error("illegal take");
+        return parsed;
+      },
+      baseline: () => ({ take: 0 }),
+      recordAttempt: (a) => recordAttemptSnapshot(attempts, a),
+      markFallback,
+      maxAttempts: 2,
+    });
+    expect(result).toEqual({ take: 2 });
+    expect(attempts.map((a) => a.error)).toEqual(["illegal take", null]);
+    expect(attempts[1]!.generation!.messages[1]!.content).toBe("view\nillegal take");
+    expect(attempts[1]!.parsedAction).toEqual(result);
+    expect(markFallback).not.toHaveBeenCalled();
   });
 });

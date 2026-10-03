@@ -18,33 +18,24 @@ import type {
 } from "@cogweb/protocol";
 import { GameError } from "./game";
 import type { Game, GameModule, ApplyResult } from "./game";
-import type { Pilot, DecideContext } from "./pilot";
+import {
+  recordAttemptSnapshot,
+  type Pilot,
+  type DecideContext,
+  type DecisionTelemetryEvent,
+} from "./pilot";
 
 export type RunMessageListener = (m: ServerMessage) => void;
 
-// ── recorded-transcript caps ──────────────────────────────────────────────────
-// Every `actPrompt` attempt is emitted as a replay frame, so every string on one
-// is a string that reaches the replay and must be truncated ON RUNE BOUNDARIES (a
-// byte- or UTF-16-boundary cut renders fine in a browser and fails a strict JSON
-// parser). The caps are deliberately generous — they bound a pathological reply,
-// a 1 MB note or a runaway error message, not a normal turn.
-const PROMPT_CAP_RUNES = 16_000;
-const RESPONSE_CAP_RUNES = 4_000;
-const ERROR_CAP_RUNES = 500;
-
-/** The first `cap` CODE POINTS of `s`, with `…` inside the cap when it was cut.
- *  Never splits a surrogate pair. */
-function capRunes(s: string, cap: number): string {
-  const runes = Array.from(s);
-  if (runes.length <= cap) return s;
-  return `${runes.slice(0, Math.max(0, cap - 1)).join("")}\u2026`;
-}
-
-/** One recorded attempt, with every field rune-capped for the replay. */
-const capAttempt = (a: ActAttempt): ActAttempt => ({
-  prompt: capRunes(a.prompt, PROMPT_CAP_RUNES),
-  response: capRunes(a.response, RESPONSE_CAP_RUNES),
-  error: a.error === null ? null : capRunes(a.error, ERROR_CAP_RUNES),
+/** Exact attempts stay private. Public replay keeps only redacted outcomes. */
+const publicPrompt = (wire: ActPromptWire, executedAction: unknown): ActPromptWire => ({
+  ...wire,
+  executedAction,
+  attempts: wire.attempts.map((attempt) => ({
+    prompt: "",
+    response: "",
+    error: attempt.error === null ? null : "Private player decision failed",
+  })),
 });
 
 /** The unified live-advance policy. When `enabled`, a pending seat that does not
@@ -59,6 +50,7 @@ export interface AutoAdvance {
 }
 
 export interface GameRunnerOptions {
+  onDecision?: (event: DecisionTelemetryEvent<unknown>) => void;
   seed?: string;
   /** The lobby's chosen per-game rule values ({@link Game.ruleOptions}), handed
    *  to `newGame` on every deal (start and reset). Omitted = no rule knobs. */
@@ -102,6 +94,7 @@ export interface GameRunnerOptions {
 
 /** The runner's view of one seat's pilot plus its operator guidance. */
 export interface SeatPilot<State, Decision> {
+  purpose: "learner" | "environment";
   pilot: Pilot<State, Decision>;
   guidance: string;
   /** Surfaced in the autopilot transcript (actPrompt) so the UI shows the model. */
@@ -124,6 +117,7 @@ export class GameRunner<State, Decision> {
   /** True once {@link Game.settleEarly} stopped the episode on the wall clock. */
   #settledEarly = false;
   readonly #openPhaseTimeoutMs?: number;
+  readonly #onDecision?: (event: DecisionTelemetryEvent<unknown>) => void;
   readonly #onFinished?: (scores: Record<number, number>) => void;
   /** The seed a host pinned (coworld league / deterministic eval), or undefined
    *  when none was pinned — in which case each game gets a fresh random seed. */
@@ -155,6 +149,7 @@ export class GameRunner<State, Decision> {
   #paused = false;
   /** Bumped on reset; a running loop exits once its captured generation is stale. */
   #generation = 0;
+  readonly #activeDecisions = new Set<AbortController>();
   /** The generation whose pilot intros have already been emitted, so a paused/
    *  resumed or restarted loop announces each seat exactly once per game. */
   #introducedGen = -1;
@@ -174,7 +169,11 @@ export class GameRunner<State, Decision> {
    *  connected. Cleared on reset. */
   #stateByTurn = new Map<number, State>();
 
-  constructor(module: GameModule<State, Decision>, pilots: Map<number, SeatPilot<State, Decision>>, opts: GameRunnerOptions = {}) {
+  constructor(
+    module: GameModule<State, Decision>,
+    pilots: Map<number, SeatPilot<State, Decision>>,
+    opts: GameRunnerOptions = {},
+  ) {
     this.#game = module.game;
     this.#pilots = pilots;
     this.#generation = opts.generation ?? 0;
@@ -186,10 +185,16 @@ export class GameRunner<State, Decision> {
     this.#now = opts.now ?? (() => Date.now());
     this.#openPhaseTimeoutMs = opts.openPhaseTimeoutMs;
     this.#onFinished = opts.onFinished;
+    this.#onDecision = opts.onDecision;
     this.#pinnedSeed = opts.seed;
     this.#rules = opts.rules;
     this.#seed = this.#nextSeed();
-    this.#state = this.#game.newGame({ seed: this.#seed, playerCount: this.#pilots.size, seatNames: this.#seatNames(), rules: this.#rules });
+    this.#state = this.#game.newGame({
+      seed: this.#seed,
+      playerCount: this.#pilots.size,
+      seatNames: this.#seatNames(),
+      rules: this.#rules,
+    });
   }
 
   /** The seed for the next game. A host that pinned a seed (coworld league /
@@ -214,6 +219,10 @@ export class GameRunner<State, Decision> {
    *  keyed by their seat number, so sorting by key yields names indexed by seat. */
   #seatNames(): string[] {
     return [...this.#pilots.entries()].sort(([a], [b]) => a - b).map(([, p]) => p.name);
+  }
+
+  get evidenceSeed(): string {
+    return this.#seed;
   }
 
   get state(): State {
@@ -304,7 +313,11 @@ export class GameRunner<State, Decision> {
   snapshotHistory(seat: number | null = null): Snapshot[] {
     return [...this.#stateByTurn.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([turn, state]) => ({ turn, generation: this.#generation, state: this.#game.redact(state, seat) }));
+      .map(([turn, state]) => ({
+        turn,
+        generation: this.#generation,
+        state: this.#game.redact(state, seat),
+      }));
   }
 
   /** The public (seat=null) redacted snapshot at the current turn. */
@@ -341,7 +354,11 @@ export class GameRunner<State, Decision> {
     const pending = finished ? new Set<number>() : new Set(this.#game.pendingActors(this.#state));
     const out: Record<string, SeatStatus> = {};
     for (const seat of this.#pilots.keys()) {
-      out[String(seat)] = this.#thinking.has(seat) ? "thinking" : pending.has(seat) ? "acting" : "waiting";
+      out[String(seat)] = this.#thinking.has(seat)
+        ? "thinking"
+        : pending.has(seat)
+          ? "acting"
+          : "waiting";
     }
     return out;
   }
@@ -377,6 +394,7 @@ export class GameRunner<State, Decision> {
    *  in-flight loop exit at its next guard; a fresh "reset" frame tells clients to
    *  drop stale snapshots. */
   reset(): void {
+    for (const controller of this.#activeDecisions) controller.abort(new Error("Runner reset"));
     this.#generation += 1;
     this.#paused = false;
     this.#thinking.clear();
@@ -386,7 +404,12 @@ export class GameRunner<State, Decision> {
     this.#releaseWaiters();
     this.#wakeOpenWait();
     this.#seed = this.#nextSeed();
-    this.#state = this.#game.newGame({ seed: this.#seed, playerCount: this.#pilots.size, seatNames: this.#seatNames(), rules: this.#rules });
+    this.#state = this.#game.newGame({
+      seed: this.#seed,
+      playerCount: this.#pilots.size,
+      seatNames: this.#seatNames(),
+      rules: this.#rules,
+    });
     this.#emit({ type: "reset", generation: this.#generation });
     this.#emitSnapshot();
     this.#emit({ type: "status", status: this.status() });
@@ -494,8 +517,19 @@ export class GameRunner<State, Decision> {
     if (gen !== this.#generation) return true;
 
     for (const outcome of outcomes) {
-      if (outcome.wire) this.#emit({ type: "actPrompt", actPrompt: outcome.wire });
+      this.#emit({ type: "actPrompt", actPrompt: publicPrompt(outcome.wire, outcome.decision) });
       this.#apply(outcome.seat, outcome.decision);
+      this.#onDecision?.({
+        seat: outcome.seat,
+        turn: this.#game.turnOf(stateAtTurn),
+        observation: this.#game.redact(stateAtTurn, outcome.seat),
+        decision: outcome.decision,
+        attempts: outcome.wire.attempts,
+        status: outcome.wire.usedFallback ? "fallback" : "accepted",
+        purpose: outcome.purpose,
+        pilotKind: outcome.pilotKind,
+        policy: outcome.policy,
+      });
       if (this.#game.isFinished(this.#state)) break;
     }
     this.#emitSnapshot();
@@ -526,16 +560,36 @@ export class GameRunner<State, Decision> {
   async #decideSeat(
     seat: number,
     stateAtTurn: State,
-  ): Promise<{ seat: number; decision: Decision; wire: ActPromptWire | null }> {
+  ): Promise<{
+    seat: number;
+    decision: Decision;
+    wire: ActPromptWire;
+    purpose: SeatPilot<State, Decision>["purpose"];
+    pilotKind: SeatPilot<State, Decision>["pilot"]["kind"];
+    policy: string | null;
+  }> {
     const seatPilot = this.#pilots.get(seat);
-    if (!seatPilot) {
-      return { seat, decision: this.#game.baselineDecision(stateAtTurn, seat), wire: null };
-    }
+    if (!seatPilot) throw new Error(`no pilot registered for pending seat ${seat}`);
     const attempts: ActAttempt[] = [];
-    const ctx = this.#makeContext(seat, stateAtTurn, seatPilot.guidance, attempts);
+    const controller = new AbortController();
+    this.#activeDecisions.add(controller);
+    let sealed = false;
+    let usedFallback = false;
+    const ctx = this.#makeContext(
+      seat,
+      stateAtTurn,
+      seatPilot.guidance,
+      attempts,
+      () => {
+        usedFallback = true;
+      },
+      controller.signal,
+      () => {
+        if (sealed) throw new Error("Decision evidence is sealed");
+      },
+    );
     const timer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
     let decision: Decision;
-    let usedFallback = false;
     try {
       const decided = seatPilot.pilot.decide(ctx).then(
         (d) => ({ ok: true as const, d }),
@@ -549,31 +603,51 @@ export class GameRunner<State, Decision> {
       const outcome = guard ? await Promise.race([decided, guard]) : await decided;
       if (outcome === "advance") {
         usedFallback = true;
+        controller.abort(new Error("Decision deadline expired"));
         seatPilot.pilot.abort?.(seat);
-        attempts.push(capAttempt({ prompt: "", response: "", error: `no reply within ${this.#maxTimeMs}ms; holding` }));
+        const joinTimer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
+        await Promise.race([
+          decided,
+          new Promise<void>((resolve) => {
+            joinTimer.id = setTimeout(resolve, Math.min(this.#maxTimeMs, 1000));
+          }),
+        ]);
+        if (joinTimer.id !== null) clearTimeout(joinTimer.id);
+        attempts.push({
+          prompt: "",
+          response: "",
+          error: `no reply within ${this.#maxTimeMs}ms; holding`,
+        });
         decision = this.#game.baselineDecision(stateAtTurn, seat);
       } else if (outcome.ok) {
         decision = outcome.d;
       } else {
         usedFallback = true;
-        attempts.push(capAttempt({ prompt: "", response: "", error: errorMessage(outcome.e) }));
+        attempts.push({ prompt: "", response: "", error: errorMessage(outcome.e) });
         decision = this.#game.baselineDecision(stateAtTurn, seat);
       }
     } finally {
+      sealed = true;
+      controller.abort();
+      this.#activeDecisions.delete(controller);
       if (timer.id !== null) clearTimeout(timer.id);
     }
-    const wire: ActPromptWire | null =
-      seatPilot.model !== null || attempts.length > 0
-        ? {
-            turn: this.#game.turnOf(stateAtTurn),
-            seat,
-            phase: null,
-            attempts,
-            usedFallback,
-            model: seatPilot.model,
-          }
-        : null;
-    return { seat, decision, wire };
+    const wire: ActPromptWire = {
+      turn: this.#game.turnOf(stateAtTurn),
+      seat,
+      phase: null,
+      attempts,
+      usedFallback,
+      model: seatPilot.model,
+    };
+    return {
+      seat,
+      decision,
+      wire,
+      purpose: seatPilot.purpose,
+      pilotKind: seatPilot.pilot.kind,
+      policy: seatPilot.name || seatPilot.model,
+    };
   }
 
   /** Park the loop in a free-form timed phase: broadcast a countdown (via
@@ -668,7 +742,9 @@ export class GameRunner<State, Decision> {
     else this.#ready.delete(seat);
     this.#emit({ type: "status", status: this.status() });
     if (this.#openWaitResolve) {
-      const humans = [...this.#pilots.entries()].filter(([, p]) => p.pilot.kind === "human").map(([s]) => s);
+      const humans = [...this.#pilots.entries()]
+        .filter(([, p]) => p.pilot.kind === "human")
+        .map(([s]) => s);
       if (humans.length > 0 && humans.every((s) => this.#ready.has(s))) this.endOpenPhase();
     }
   }
@@ -710,7 +786,23 @@ export class GameRunner<State, Decision> {
       if (!seatPilot) throw new Error(`no pilot registered for pending seat ${seat}`);
 
       const attempts: ActAttempt[] = [];
-      const ctx = this.#makeContext(seat, stateAtTurn, seatPilot.guidance, attempts);
+      const controller = new AbortController();
+      this.#activeDecisions.add(controller);
+      let sealed = false;
+      let usedFallback = false;
+      const ctx = this.#makeContext(
+        seat,
+        stateAtTurn,
+        seatPilot.guidance,
+        attempts,
+        () => {
+          usedFallback = true;
+        },
+        controller.signal,
+        () => {
+          if (sealed) throw new Error("Decision evidence is sealed");
+        },
+      );
 
       // A human pilot is parked awaiting the player's input (it's their turn), not
       // composing a move — keep it OUT of #thinking so the roster shows "acting"
@@ -726,7 +818,6 @@ export class GameRunner<State, Decision> {
       this.#emit({ type: "status", status: this.status() });
 
       let decision: Decision;
-      let usedFallback = false;
       try {
         // Race the pilot against the auto-advance countdown. A pilot throw/reject is
         // folded into the result (not a race rejection) so it's handled the same as a
@@ -739,7 +830,16 @@ export class GameRunner<State, Decision> {
         if (outcome === "advance") {
           // The clock won: abandon the seat's in-flight decision and play baseline.
           usedFallback = true;
+          controller.abort(new Error("Decision deadline expired"));
           seatPilot.pilot.abort?.(seat);
+          const joinTimer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
+          await Promise.race([
+            decided,
+            new Promise<void>((resolve) => {
+              joinTimer.id = setTimeout(resolve, Math.min(this.#maxTimeMs, 1000));
+            }),
+          ]);
+          if (joinTimer.id !== null) clearTimeout(joinTimer.id);
           decision = this.#game.baselineDecision(stateAtTurn, seat);
         } else if (outcome.ok) {
           decision = outcome.d;
@@ -750,10 +850,13 @@ export class GameRunner<State, Decision> {
           continue;
         } else {
           usedFallback = true;
-          attempts.push(capAttempt({ prompt: "", response: "", error: errorMessage(outcome.e) }));
+          attempts.push({ prompt: "", response: "", error: errorMessage(outcome.e) });
           decision = this.#game.baselineDecision(stateAtTurn, seat);
         }
       } finally {
+        sealed = true;
+        controller.abort();
+        this.#activeDecisions.delete(controller);
         this.#disarmAdvance();
         this.#fireAdvance = null;
         this.#thinking.delete(seat);
@@ -763,7 +866,7 @@ export class GameRunner<State, Decision> {
 
       // Emit the autopilot transcript for piloted seats (model present) so the UI
       // can show what the model saw and decided.
-      if (seatPilot.model !== null || attempts.length > 0) {
+      {
         const wire: ActPromptWire = {
           turn: this.#game.turnOf(stateAtTurn),
           seat,
@@ -772,10 +875,21 @@ export class GameRunner<State, Decision> {
           usedFallback,
           model: seatPilot.model,
         };
-        this.#emit({ type: "actPrompt", actPrompt: wire });
+        this.#emit({ type: "actPrompt", actPrompt: publicPrompt(wire, decision) });
       }
 
       this.#apply(seat, decision);
+      this.#onDecision?.({
+        seat,
+        turn: this.#game.turnOf(stateAtTurn),
+        observation: this.#game.redact(stateAtTurn, seat),
+        decision,
+        attempts,
+        status: usedFallback ? "fallback" : "accepted",
+        purpose: seatPilot.purpose,
+        pilotKind: seatPilot.pilot.kind,
+        policy: seatPilot.name || seatPilot.model,
+      });
       return;
     }
   }
@@ -801,14 +915,26 @@ export class GameRunner<State, Decision> {
    *  game's decisionSchema then a dry-run applyDecision, so an illegal-but-typed
    *  move surfaces its GameError as a re-promptable reason — the single gate
    *  every pilot (LLM, remote, human) shares. */
-  #makeContext(seat: number, state: State, guidance: string, attempts: ActAttempt[]): DecideContext<State, Decision> {
+  #makeContext(
+    seat: number,
+    state: State,
+    guidance: string,
+    attempts: ActAttempt[],
+    markFallback: () => void,
+    signal: AbortSignal,
+    assertOpen: () => void,
+  ): DecideContext<State, Decision> {
     const game = this.#game;
+    const seatPilot = this.#pilots.get(seat)!;
     return {
+      signal,
       game,
       state,
       seat,
       guidance,
       validate(candidate: unknown): Decision {
+        assertOpen();
+        signal.throwIfAborted();
         // Schema first (throws ZodError on shape mismatch), then a dry-run apply
         // so an illegal-but-well-typed move surfaces its GameError reason. Both
         // are re-promptable: the pilot may catch and retry.
@@ -821,10 +947,30 @@ export class GameRunner<State, Decision> {
         }
         return parsed;
       },
+      markFallback: () => {
+        assertOpen();
+        markFallback();
+      },
+      recordSpeech: (speechAttempts, executed, failed) => {
+        assertOpen();
+        signal.throwIfAborted();
+        if (speechAttempts.length === 0) return;
+        this.#onDecision?.({
+          seat,
+          turn: game.turnOf(state),
+          observation: game.redact(state, seat),
+          decision: executed,
+          attempts: speechAttempts,
+          status: failed ? "fallback" : "accepted",
+          purpose: seatPilot.purpose,
+          pilotKind: seatPilot.pilot.kind,
+          policy: seatPilot.name || seatPilot.model,
+        });
+      },
       recordAttempt(attempt: ActAttempt): void {
-        // Rune-capped HERE, the single choke point every transcript passes on its
-        // way to an `actPrompt` replay frame.
-        attempts.push(capAttempt(attempt));
+        // Uncapped private evidence is separate from the public replay.
+        assertOpen();
+        recordAttemptSnapshot(attempts, attempt);
       },
     };
   }

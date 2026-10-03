@@ -7,12 +7,24 @@
 import type { ActAttempt, FeedEvent } from "@cogweb/protocol";
 import type { Game } from "./game";
 
+/** Replace request-local evidence without sharing mutable transport objects. */
+export function recordAttemptSnapshot(attempts: ActAttempt[], attempt: ActAttempt): void {
+  const snapshot = structuredClone(attempt);
+  const index = attempts.findIndex(
+    (recorded) =>
+      attempt.generationId !== undefined && recorded.generationId === attempt.generationId,
+  );
+  if (index < 0) attempts.push(snapshot);
+  else attempts[index] = snapshot;
+}
+
 export interface DecideContext<State, Decision> {
   readonly game: Game<State, Decision>;
   readonly state: State;
   readonly seat: number;
   /** Operator/human guidance steering an LLM pilot (empty for non-LLM). */
   readonly guidance: string;
+  readonly signal: AbortSignal;
   /**
    * Validate a candidate against schema AND legality (a dry-run applyDecision).
    * Returns the typed decision, or throws with a human-readable reason suitable
@@ -21,6 +33,8 @@ export interface DecideContext<State, Decision> {
   validate(candidate: unknown): Decision;
   /** Record one attempt for the autopilot transcript surfaced in the UI. */
   recordAttempt(attempt: ActAttempt): void;
+  markFallback(): void;
+  recordSpeech(attempts: ActAttempt[], executed: unknown, failed: boolean): void;
 }
 
 export interface Pilot<State, Decision> {
@@ -47,4 +61,17 @@ export interface Pilot<State, Decision> {
    * need not implement it.
    */
   intro?(seat: number): Promise<Omit<FeedEvent, "turn"> | null>;
+}
+
+/** Private applied-action evidence; never broadcast as a replay frame. */
+export interface DecisionTelemetryEvent<Decision> {
+  seat: number;
+  turn: number;
+  observation: unknown;
+  decision: Decision;
+  attempts: ActAttempt[];
+  status: "accepted" | "fallback";
+  pilotKind: Pilot<unknown, Decision>["kind"];
+  policy: string | null;
+  purpose: "learner" | "environment";
 }

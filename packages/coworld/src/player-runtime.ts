@@ -12,8 +12,10 @@
 // `decide` produces a Decision the game will validate; this runtime stays
 // game-agnostic and only relays. The game's `GameModule` supplies the baseline
 // via `module.game.baselineDecision`, so a no-LLM player is a one-liner.
+import type { ActAttempt } from "@cogweb/protocol";
 import { WebSocket } from "ws";
-import type { GameModule } from "@cogweb/core";
+import { recordAttemptSnapshot, type GameModule } from "@cogweb/core";
+import { writePlayerTraceArtifact, type PlayerTraceRecord } from "./player-artifact";
 import { llmUsageTotals } from "@cogweb/llm";
 import {
   parseGameToPlayer,
@@ -27,6 +29,8 @@ import {
 export interface PlayerDecideContext<State, Decision, View> {
   /** The seat's redacted view (already parsed from the wire). */
   view: View;
+  signal: AbortSignal;
+  playerSlot: number;
   seat: number;
   turn: number;
   /** The seat's visible inbox (public chatter + DMs to/from it), oldest first. A
@@ -43,6 +47,8 @@ export interface PlayerDecideContext<State, Decision, View> {
   config: unknown;
   /** The game module, e.g. for `module.game.baselineDecision`. */
   module: GameModule<State, Decision, View>;
+  recordAttempt(attempt: ActAttempt): void;
+  markFallback(): void;
 }
 
 export interface RunCoworldPlayerOpts<State, Decision, View> {
@@ -69,13 +75,28 @@ export function runCoworldPlayer<State, Decision, View>(
   if (!url) throw new Error("no player socket URL: pass `connect` or set COWORLD_PLAYER_WS_URL");
 
   return new Promise<number[]>((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const playerUrl = new URL(url);
+    playerUrl.searchParams.set("artifact_ack", "1");
+    playerUrl.searchParams.set("decision_cancel", "1");
+    const ws = new WebSocket(playerUrl);
     let welcome: WelcomeMessage | null = null;
+    const episodeController = new AbortController();
+    let observationController = new AbortController();
+    let activeObservationId: number | null = null;
+    let sealed = false;
+    let finishing = false;
+    const pending = new Set<Promise<unknown>>();
+    const trace: PlayerTraceRecord[] = [];
+    const artifactUri = process.env.COWORLD_PLAYER_ARTIFACT_UPLOAD_URL;
 
     ws.on("error", reject);
     ws.on("message", (data: Buffer) => {
       const msg = parseGameToPlayer(JSON.parse(data.toString()));
       switch (msg.type) {
+        case "cancel":
+          if (msg.id === activeObservationId)
+            observationController.abort(new Error("Game cancelled decision"));
+          return;
         case "welcome":
           welcome = msg;
           return;
@@ -85,14 +106,77 @@ export function runCoworldPlayer<State, Decision, View>(
           // process never writes the replay/results — the host does). Zeroed for a
           // scripted/no-LLM policy, which is itself the useful signal.
           console.log(JSON.stringify({ kind: "llm_usage", ...llmUsageTotals() }));
-          resolve(msg.scores);
-          ws.close();
+          finishing = true;
+          episodeController.abort(new Error("Episode finished"));
+          void Promise.race([
+            Promise.allSettled(pending),
+            new Promise<void>((done) =>
+              AbortSignal.timeout(1000).addEventListener("abort", () => done(), { once: true }),
+            ),
+          ])
+            .then(() => {
+              sealed = true;
+              return artifactUri
+                ? writePlayerTraceArtifact(artifactUri, welcome!.slot, trace, msg.scores)
+                : Promise.resolve();
+            })
+            .then(
+              () =>
+                ws.send(JSON.stringify({ type: "artifact_complete" }), (error) => {
+                  if (error) reject(error);
+                  else resolve(msg.scores);
+                  ws.close();
+                }),
+              reject,
+            );
           return;
         case "observation": {
+          observationController.abort(new Error("Observation superseded"));
+          observationController = new AbortController();
+          activeObservationId = msg.id;
           // The game never sends an observation before welcome; the redacted
           // view and config are typed at the game boundary, so cast through.
           const view = msg.view as View;
+          const attempts: ActAttempt[] = [];
+          const speechAttempts: ActAttempt[] = [];
+          let usedFallback = false;
+          const record: PlayerTraceRecord = {
+            request: msg,
+            response: {
+              type: "failure",
+              id: msg.id,
+              error: "No applied action recorded",
+              attempts: [],
+              speechAttempts: [],
+            },
+          };
+          if (artifactUri) trace.push(record);
+          const assertOpen = () => {
+            if (sealed) throw new Error("Player evidence is sealed");
+          };
+          const capture = (target: ActAttempt[], attempt: ActAttempt) => {
+            assertOpen();
+            recordAttemptSnapshot(target, attempt);
+            record.response = {
+              type: "failure",
+              id: msg.id,
+              error: "No applied action recorded",
+              attempts: structuredClone(attempts),
+              speechAttempts: structuredClone(speechAttempts),
+            };
+          };
+          const sendRecorded = (response: ReplyMessage | import("./protocol").FailureMessage) => {
+            assertOpen();
+            record.response = structuredClone(response);
+            if (!finishing) ws.send(JSON.stringify(response));
+          };
           const ctx: PlayerDecideContext<State, Decision, View> = {
+            signal: AbortSignal.any([
+              episodeController.signal,
+              observationController.signal,
+              AbortSignal.timeout(30_000),
+            ]),
+            playerSlot: welcome!.slot,
             view,
             seat: msg.seat,
             turn: msg.turn,
@@ -101,16 +185,72 @@ export function runCoworldPlayer<State, Decision, View>(
             timeLeftMs: msg.timeLeftMs,
             config: welcome?.config,
             module: opts.module,
+            recordAttempt: (attempt) => {
+              capture(attempts, attempt);
+            },
+            markFallback: () => {
+              assertOpen();
+              usedFallback = true;
+            },
           };
           // Decide and (optionally) talk in parallel; the reply carries both, so a
           // cheap-talk pass never blocks the move past what the player itself takes.
-          void Promise.all([
-            Promise.resolve(opts.decide(ctx)),
-            opts.talk ? Promise.resolve(opts.talk(ctx)) : Promise.resolve<TalkLine[]>([]),
-          ]).then(([decision, messages]) => {
-            const reply: ReplyMessage = { type: "reply", id: msg.id, decision, messages };
-            ws.send(JSON.stringify(reply));
+          const work = Promise.allSettled([
+            Promise.resolve().then(() => opts.decide(ctx)),
+            opts.talk
+              ? Promise.resolve().then(() =>
+                  opts.talk!({
+                    ...ctx,
+                    markFallback: () => {},
+                    recordAttempt: (attempt) => {
+                      capture(speechAttempts, attempt);
+                    },
+                  }),
+                )
+              : Promise.resolve<TalkLine[]>([]),
+          ]).then(([action, speech]) => {
+            if (ctx.signal.aborted) {
+              sendRecorded({
+                type: "failure",
+                id: msg.id,
+                error: String(ctx.signal.reason),
+                attempts,
+                speechAttempts,
+              });
+              return;
+            }
+            if (action.status === "rejected" || speech.status === "rejected") {
+              const failure =
+                action.status === "rejected"
+                  ? action.reason
+                  : speech.status === "rejected"
+                    ? speech.reason
+                    : undefined;
+              sendRecorded({
+                type: "failure",
+                id: msg.id,
+                error: String(failure),
+                attempts,
+                speechAttempts,
+              });
+              return;
+            }
+            const reply: ReplyMessage = {
+              type: "reply",
+              id: msg.id,
+              decision: action.value,
+              messages: speech.value,
+              attempts,
+              speechAttempts,
+              usedFallback,
+            };
+            sendRecorded(reply);
           }, reject);
+          pending.add(work);
+          void work.then(
+            () => pending.delete(work),
+            () => pending.delete(work),
+          );
           return;
         }
       }

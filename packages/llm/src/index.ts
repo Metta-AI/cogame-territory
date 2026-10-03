@@ -4,12 +4,24 @@
 // `MessageBus` is the visibility-aware negotiation substrate.
 
 export {
-  OpenRouterLlmClient, llmConfigFromEnv, llmUsageTotals, resetLlmUsage,
-  isCredentialsUnavailable, type LlmConfig, type MessagesClient,
-  type LlmUsageTotals, type LlmMessage, type LlmResult, type LlmUsage, type ToolSpec,
+  OpenRouterLlmClient,
+  llmConfigFromEnv,
+  llmUsageTotals,
+  resetLlmUsage,
+  isCredentialsUnavailable,
+  type LlmConfig,
+  type LlmUsageTotals,
+  type LlmMessage,
+  type LlmResult,
+  type LlmUsage,
 } from "./openrouter.js";
 
-export { robustDecide, extractJson, type RobustDecideOpts } from "./robust-decide.js";
+export {
+  robustDecide,
+  extractJson,
+  parseJsonAction,
+  type RobustDecideOpts,
+} from "./robust-decide.js";
 
 export { LlmPilot, type LlmPilotOpts } from "./llm-pilot.js";
 

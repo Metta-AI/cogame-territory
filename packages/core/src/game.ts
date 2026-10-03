@@ -56,7 +56,12 @@ export interface Game<State, Decision, View = unknown> {
    *  name, e.g. a scripted/remote pilot); a game may use these as agent identities
    *  or ignore them. `rules` carries the lobby's chosen {@link ruleOptions} values
    *  (absent for hosts with no lobby, e.g. a coworld episode). */
-  newGame(opts: { seed: string; playerCount: number; seatNames: string[]; rules?: Record<string, string> }): State;
+  newGame(opts: {
+    seed: string;
+    playerCount: number;
+    seatNames: string[];
+    rules?: Record<string, string>;
+  }): State;
 
   /** The current turn number, used to stamp snapshots and events. */
   turnOf(state: State): number;
@@ -156,11 +161,20 @@ export interface Autopilot<State, Decision> {
     ctx: { guidance: string; messages: ObservedMessage[] },
   ): string;
 
+  /** Render a player-redacted view without treating it as engine state. */
+  renderView(
+    view: unknown,
+    seat: number,
+    ctx: { guidance: string; messages: ObservedMessage[] },
+  ): string;
+
   /**
-   * Optional Bedrock tool spec for structured output. When present the LLM
-   * driver uses tool-use; when absent it extracts JSON from the text response.
+   * JSON output contract appended to the direct text-action system prompt.
    */
-  tool?(state: State, seat: number): { name: string; description: string; inputSchema: unknown };
+  actionSchema?(
+    state: State,
+    seat: number,
+  ): { name: string; description: string; inputSchema: unknown };
 }
 
 /** What a game registers with the platform. */
