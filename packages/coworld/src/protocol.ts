@@ -99,6 +99,7 @@ export const ReplyMessage = z.object({
   messages: z.array(TalkLine).default([]),
   attempts: z.array(ActAttempt).optional(),
   speechAttempts: z.array(ActAttempt).optional(),
+  speechUsedFallback: z.boolean().optional(),
   usedFallback: z.boolean().optional(),
 });
 export type ReplyMessage = z.infer<typeof ReplyMessage>;

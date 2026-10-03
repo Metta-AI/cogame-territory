@@ -38,6 +38,10 @@ import {
 const MAX_ATTEMPTS = 2;
 const GIVE_UP_AFTER_TIMEOUTS = 3;
 
+export type TalkDelivery =
+  | { kind: "accepted"; messages: TalkLine[] }
+  | { kind: "rejected"; reason: string };
+
 export interface RemotePlayerPilotOpts {
   /** Base `/player` websocket URL, e.g. "ws://host:8080/player". */
   url: string;
@@ -53,8 +57,8 @@ export interface RemotePlayerPilotOpts {
    *  table talk it's entitled to. Defaults to an empty inbox (no comms). */
   inboxFor?: (seat: number) => InboxMessage[];
   /** Sink for cheap-talk lines a player posts with its reply: the host routes them
-   *  to the episode bus + spectator feed. Omitted when the game has no comms. */
-  onTalk?: (seat: number, turn: number, lines: TalkLine[]) => void;
+   *  to the episode bus + spectator feed and returns the authoritative applied messages. */
+  onTalk: (seat: number, turn: number, lines: TalkLine[]) => TalkDelivery;
   /** Chess clock: the INITIAL wall-clock thinking bank (ms) for this policy. The
    *  pilot tells the policy its remaining bank on every observation (`timeLeftMs`),
    *  decrements it by the time each turn takes, and once it is spent stops asking
@@ -79,7 +83,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
   readonly #actTimeoutMs: number;
   readonly #connectTimeoutMs: number;
   readonly #inboxFor: (seat: number) => InboxMessage[];
-  readonly #onTalk: ((seat: number, turn: number, lines: TalkLine[]) => void) | null;
+  readonly #onTalk: (seat: number, turn: number, lines: TalkLine[]) => TalkDelivery;
   /** Configured chess-clock budget (ms), or null for an unbounded budget. */
   readonly #clockMs: number | null;
   /** Per-turn credit hook (Fischer increment), or null for a fixed total budget. */
@@ -113,7 +117,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
     this.#actTimeoutMs = opts.actTimeoutMs ?? 120_000;
     this.#connectTimeoutMs = opts.connectTimeoutMs ?? 30_000;
     this.#inboxFor = opts.inboxFor ?? (() => []);
-    this.#onTalk = opts.onTalk ?? null;
+    this.#onTalk = opts.onTalk;
     this.#clockMs = opts.chessClockMs ?? null;
     this.#creditFor = opts.chessClockCreditFor ?? null;
     this.#bankMs = opts.chessClockMs ?? 0;
@@ -192,7 +196,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
           continue;
         }
         if (raw.usedFallback) ctx.markFallback();
-        ctx.recordSpeech(raw.speechAttempts ?? [], raw.messages, false);
+        ctx.recordSpeech(raw.speechAttempts ?? [], raw.messages, raw.speechUsedFallback ?? false);
         try {
           const decision = ctx.validate(raw.decision);
           // Record the ACCEPTED decision, not the raw frame: `validate` runs the
@@ -349,8 +353,18 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
     }
     const msg = parsed.message;
     if (msg.type !== "artifact_complete" && this.#pending && msg.id === this.#pending.id) {
-      if (msg.type === "reply" && !this.#pending.signal.aborted && msg.messages.length > 0)
-        this.#onTalk?.(this.#cur.seat, this.#cur.turn, msg.messages);
+      if (msg.type === "reply" && !this.#pending.signal.aborted && msg.messages.length > 0) {
+        const delivery = this.#onTalk(this.#cur.seat, this.#cur.turn, msg.messages);
+        if (delivery.kind === "accepted") msg.messages = delivery.messages;
+        else {
+          msg.messages = [];
+          msg.speechUsedFallback = true;
+          msg.speechAttempts = (msg.speechAttempts ?? []).map((attempt) => ({
+            ...attempt,
+            error: attempt.error ?? delivery.reason,
+          }));
+        }
+      }
       this.#pending.resolve(msg);
     }
   }
