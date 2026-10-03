@@ -22,7 +22,7 @@
 import { WebSocket } from "ws";
 import type { Pilot, DecideContext } from "@cogweb/core";
 import {
-  PlayerToGame,
+  parsePlayerFrame,
   type InboxMessage,
   type ObservationMessage,
   type TalkLine,
@@ -93,7 +93,12 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
    *  can be attributed when they arrive (the bridge is per-slot, one act at a time). */
   #cur: { seat: number; turn: number } = { seat: 0, turn: 0 };
   /** The single in-flight observation's reply resolver, keyed by id. */
-  #pending: { id: number; resolve: (reply: ReplyMessage | FailureMessage) => void } | null = null;
+  #pending: {
+    id: number;
+    signal: AbortSignal;
+    resolve: (reply: ReplyMessage | FailureMessage) => void;
+    reject: (error: Error) => void;
+  } | null = null;
   /** Consecutive reply-timeouts; reset by any live reply. Trips the breaker. */
   #consecutiveTimeouts = 0;
   /** Once tripped, every decide fails fast (the runner uses the baseline). */
@@ -115,6 +120,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
   }
 
   async decide(ctx: DecideContext<State, Decision>): Promise<Decision> {
+    ctx.signal.throwIfAborted();
     // Breaker already tripped: don't wait the act-timeout again, fail straight to
     // the baseline so a dead player can't drag the episode past the wall-clock.
     if (this.#unresponsive) {
@@ -130,7 +136,8 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
     // move for it (no round trip) until the increment refunds it.
     if (this.#clockMs !== null && this.#bankMs <= 0) return this.#playRandom(ctx);
 
-    const ws = await this.#ensureConnected();
+    const ws = await this.#ensureConnected(ctx.signal);
+    ctx.signal.throwIfAborted();
     const view = ctx.game.redact(ctx.state, ctx.seat);
     const turn = ctx.game.turnOf(ctx.state);
     this.#cur = { seat: ctx.seat, turn };
@@ -140,6 +147,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
     try {
       let reason: string | null = null;
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        ctx.signal.throwIfAborted();
         const id = this.#seq++;
         const obs: ObservationMessage = {
           type: "observation",
@@ -160,7 +168,7 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
             this.#clockMs !== null
               ? Math.min(this.#actTimeoutMs, remainingBank())
               : this.#actTimeoutMs;
-          raw = await this.#request(ws, obs, waitMs);
+          raw = await this.#request(ws, obs, waitMs, ctx.signal);
         } catch (err) {
           // The bank ran out waiting for this reply: switch to random for the rest of
           // the game (this is the chess clock expiring, not an unresponsive socket).
@@ -169,6 +177,10 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
           // let the runner fall back to the baseline for this decision.
           if (++this.#consecutiveTimeouts >= GIVE_UP_AFTER_TIMEOUTS) this.#unresponsive = true;
           throw err;
+        }
+        if (ctx.signal.aborted) {
+          for (const evidence of raw.attempts ?? []) ctx.recordAttempt(evidence);
+          ctx.signal.throwIfAborted();
         }
         this.#consecutiveTimeouts = 0; // a live reply means the player is alive
         const response = raw.type === "reply" ? JSON.stringify(raw.decision) : "";
@@ -237,34 +249,38 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
   }
 
   /** Open the socket once and reuse it across turns. */
-  #ensureConnected(): Promise<WebSocket> {
+  #ensureConnected(signal: AbortSignal): Promise<WebSocket> {
+    signal.throwIfAborted();
     if (this.#ws && this.#ws.readyState === WebSocket.OPEN) return Promise.resolve(this.#ws);
     return new Promise<WebSocket>((resolve, reject) => {
       const ws = new WebSocket(this.#url);
       const timer = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
         ws.terminate();
         reject(new Error(`remote player connect timed out after ${this.#connectTimeoutMs}ms`));
       }, this.#connectTimeoutMs);
 
+      const onAbort = () => {
+        clearTimeout(timer);
+        ws.terminate();
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
       ws.on("open", () => {
+        signal.removeEventListener("abort", onAbort);
         clearTimeout(timer);
         this.#ws = ws;
         resolve(ws);
       });
       ws.on("error", (err) => {
+        signal.removeEventListener("abort", onAbort);
         clearTimeout(timer);
         reject(err);
       });
       ws.on("message", (data: Buffer) => this.#onMessage(data));
       ws.on("close", () => {
         this.#ws = null;
-        this.#pending?.resolve({
-          type: "failure",
-          id: this.#pending.id,
-          error: "player socket closed",
-          attempts: [],
-          speechAttempts: [],
-        });
+        this.#pending?.reject(new Error(`remote player slot ${this.#slot} disconnected`));
         this.#pending = null;
       });
     });
@@ -277,20 +293,39 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
     ws: WebSocket,
     obs: ObservationMessage,
     timeoutMs: number,
+    signal: AbortSignal,
   ): Promise<ReplyMessage | FailureMessage> {
+    signal.throwIfAborted();
     return new Promise<ReplyMessage | FailureMessage>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.#pending = null;
-        reject(new Error(`remote player reply timed out after ${timeoutMs}ms`));
+      let timer = setTimeout(() => {
+        ws.send(JSON.stringify({ type: "cancel", id: obs.id }));
+        this.#pending?.reject(new Error(`remote player reply timed out after ${timeoutMs}ms`));
       }, timeoutMs);
+      const onAbort = () => {
+        clearTimeout(timer);
+        ws.send(JSON.stringify({ type: "cancel", id: obs.id }));
+        timer = setTimeout(
+          () => this.#pending?.reject(new Error("Remote player cancellation did not settle")),
+          1000,
+        );
+      };
       this.#pending = {
         id: obs.id,
-        resolve: (decision) => {
+        signal,
+        resolve: (response) => {
           clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
           this.#pending = null;
-          resolve(decision);
+          resolve(response);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
+          this.#pending = null;
+          reject(error);
         },
       };
+      signal.addEventListener("abort", onAbort, { once: true });
       ws.send(JSON.stringify(obs));
     });
   }
@@ -307,23 +342,14 @@ export class RemotePlayerPilot<State, Decision> implements Pilot<State, Decision
    *  an uncaught ws-event exception that kills the whole game host (exit 1), failing
    *  the episode for every seat because one player speaks garbage. */
   #onMessage(data: Buffer): void {
-    let json: unknown;
-    try {
-      json = JSON.parse(data.toString());
-    } catch {
-      console.error(`[remote-pilot] slot ${this.#slot}: dropping non-JSON player frame`);
+    const parsed = parsePlayerFrame(data.toString());
+    if (parsed.kind !== "message") {
+      console.error(`[remote-pilot] slot ${this.#slot}: dropping ${parsed.kind} player frame`);
       return;
     }
-    const parsed = PlayerToGame.safeParse(json);
-    if (!parsed.success) {
-      console.error(
-        `[remote-pilot] slot ${this.#slot}: dropping unrecognized player frame: ${parsed.error.message}`,
-      );
-      return;
-    }
-    const msg = parsed.data;
-    if (this.#pending && msg.id === this.#pending.id) {
-      if (msg.type === "reply" && msg.messages.length > 0)
+    const msg = parsed.message;
+    if (msg.type !== "artifact_complete" && this.#pending && msg.id === this.#pending.id) {
+      if (msg.type === "reply" && !this.#pending.signal.aborted && msg.messages.length > 0)
         this.#onTalk?.(this.#cur.seat, this.#cur.turn, msg.messages);
       this.#pending.resolve(msg);
     }

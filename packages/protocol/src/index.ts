@@ -155,7 +155,24 @@ export const SamplingEvidence = z.object({
 });
 export type SamplingEvidence = z.infer<typeof SamplingEvidence>;
 
+export const GenerationPurpose = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("learner") }),
+  z.object({
+    kind: z.literal("environment"),
+    model: z.string().min(1),
+    decoder: z.object({
+      maxTokens: z.number().int().positive(),
+      temperature: z.number().nonnegative(),
+      topP: z.number().min(0).max(1),
+    }),
+  }),
+]);
+export type GenerationPurpose = z.infer<typeof GenerationPurpose>;
+
 export const TextGeneration = z.object({
+  purpose: GenerationPurpose.optional(),
+  responseHeaders: z.record(z.string()).optional(),
+  providerRequestId: z.string().nullable().optional(),
   model: z.string().min(1),
   messages: z
     .array(z.object({ role: z.enum(["system", "user", "assistant"]), content: z.string() }))
@@ -188,6 +205,7 @@ export class GenerationEvidenceError extends Error {
 }
 
 export const ActAttempt = z.object({
+  purpose: GenerationPurpose.optional(),
   prompt: z.string(),
   response: z.string(),
   /** Rejection reason if this attempt was illegal/unparseable, else null. */

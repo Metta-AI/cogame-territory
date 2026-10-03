@@ -44,7 +44,13 @@ async function playOne<State, Decision>(
 ): Promise<Record<number, number>> {
   const pilots = new Map<number, SeatPilot<State, Decision>>();
   for (const seat of seats) {
-    pilots.set(seat, { pilot: pilotFor(seat), guidance: "", model: null, name: "" });
+    pilots.set(seat, {
+      purpose: "learner",
+      pilot: pilotFor(seat),
+      guidance: "",
+      model: null,
+      name: "",
+    });
   }
   // Headless self-play is all bots and must terminate: auto-advance is always on,
   // capping a stalled pilot at `maxTimeMs` (default 30s) with a baseline move.

@@ -18,7 +18,12 @@ import type {
 } from "@cogweb/protocol";
 import { GameError } from "./game";
 import type { Game, GameModule, ApplyResult } from "./game";
-import type { Pilot, DecideContext, DecisionTelemetryEvent } from "./pilot";
+import {
+  recordAttemptSnapshot,
+  type Pilot,
+  type DecideContext,
+  type DecisionTelemetryEvent,
+} from "./pilot";
 
 export type RunMessageListener = (m: ServerMessage) => void;
 
@@ -89,6 +94,7 @@ export interface GameRunnerOptions {
 
 /** The runner's view of one seat's pilot plus its operator guidance. */
 export interface SeatPilot<State, Decision> {
+  purpose: "learner" | "environment";
   pilot: Pilot<State, Decision>;
   guidance: string;
   /** Surfaced in the autopilot transcript (actPrompt) so the UI shows the model. */
@@ -143,6 +149,7 @@ export class GameRunner<State, Decision> {
   #paused = false;
   /** Bumped on reset; a running loop exits once its captured generation is stale. */
   #generation = 0;
+  readonly #activeDecisions = new Set<AbortController>();
   /** The generation whose pilot intros have already been emitted, so a paused/
    *  resumed or restarted loop announces each seat exactly once per game. */
   #introducedGen = -1;
@@ -387,6 +394,7 @@ export class GameRunner<State, Decision> {
    *  in-flight loop exit at its next guard; a fresh "reset" frame tells clients to
    *  drop stale snapshots. */
   reset(): void {
+    for (const controller of this.#activeDecisions) controller.abort(new Error("Runner reset"));
     this.#generation += 1;
     this.#paused = false;
     this.#thinking.clear();
@@ -509,18 +517,18 @@ export class GameRunner<State, Decision> {
     if (gen !== this.#generation) return true;
 
     for (const outcome of outcomes) {
-      if (outcome.wire)
-        this.#emit({ type: "actPrompt", actPrompt: publicPrompt(outcome.wire, outcome.decision) });
+      this.#emit({ type: "actPrompt", actPrompt: publicPrompt(outcome.wire, outcome.decision) });
       this.#apply(outcome.seat, outcome.decision);
       this.#onDecision?.({
         seat: outcome.seat,
         turn: this.#game.turnOf(stateAtTurn),
         observation: this.#game.redact(stateAtTurn, outcome.seat),
         decision: outcome.decision,
-        attempts: outcome.wire?.attempts ?? [],
-        status: outcome.wire?.usedFallback || !outcome.wire ? "fallback" : "accepted",
-        pilotKind: this.#pilots.get(outcome.seat)?.pilot.kind ?? "scripted",
-        policy: this.#pilots.get(outcome.seat)?.name || outcome.wire?.model || null,
+        attempts: outcome.wire.attempts,
+        status: outcome.wire.usedFallback ? "fallback" : "accepted",
+        purpose: outcome.purpose,
+        pilotKind: outcome.pilotKind,
+        policy: outcome.policy,
       });
       if (this.#game.isFinished(this.#state)) break;
     }
@@ -552,16 +560,34 @@ export class GameRunner<State, Decision> {
   async #decideSeat(
     seat: number,
     stateAtTurn: State,
-  ): Promise<{ seat: number; decision: Decision; wire: ActPromptWire | null }> {
+  ): Promise<{
+    seat: number;
+    decision: Decision;
+    wire: ActPromptWire;
+    purpose: SeatPilot<State, Decision>["purpose"];
+    pilotKind: SeatPilot<State, Decision>["pilot"]["kind"];
+    policy: string | null;
+  }> {
     const seatPilot = this.#pilots.get(seat);
-    if (!seatPilot) {
-      return { seat, decision: this.#game.baselineDecision(stateAtTurn, seat), wire: null };
-    }
+    if (!seatPilot) throw new Error(`no pilot registered for pending seat ${seat}`);
     const attempts: ActAttempt[] = [];
+    const controller = new AbortController();
+    this.#activeDecisions.add(controller);
+    let sealed = false;
     let usedFallback = false;
-    const ctx = this.#makeContext(seat, stateAtTurn, seatPilot.guidance, attempts, () => {
-      usedFallback = true;
-    });
+    const ctx = this.#makeContext(
+      seat,
+      stateAtTurn,
+      seatPilot.guidance,
+      attempts,
+      () => {
+        usedFallback = true;
+      },
+      controller.signal,
+      () => {
+        if (sealed) throw new Error("Decision evidence is sealed");
+      },
+    );
     const timer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
     let decision: Decision;
     try {
@@ -577,7 +603,16 @@ export class GameRunner<State, Decision> {
       const outcome = guard ? await Promise.race([decided, guard]) : await decided;
       if (outcome === "advance") {
         usedFallback = true;
+        controller.abort(new Error("Decision deadline expired"));
         seatPilot.pilot.abort?.(seat);
+        const joinTimer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
+        await Promise.race([
+          decided,
+          new Promise<void>((resolve) => {
+            joinTimer.id = setTimeout(resolve, Math.min(this.#maxTimeMs, 1000));
+          }),
+        ]);
+        if (joinTimer.id !== null) clearTimeout(joinTimer.id);
         attempts.push({
           prompt: "",
           response: "",
@@ -592,6 +627,9 @@ export class GameRunner<State, Decision> {
         decision = this.#game.baselineDecision(stateAtTurn, seat);
       }
     } finally {
+      sealed = true;
+      controller.abort();
+      this.#activeDecisions.delete(controller);
       if (timer.id !== null) clearTimeout(timer.id);
     }
     const wire: ActPromptWire = {
@@ -602,7 +640,14 @@ export class GameRunner<State, Decision> {
       usedFallback,
       model: seatPilot.model,
     };
-    return { seat, decision, wire };
+    return {
+      seat,
+      decision,
+      wire,
+      purpose: seatPilot.purpose,
+      pilotKind: seatPilot.pilot.kind,
+      policy: seatPilot.name || seatPilot.model,
+    };
   }
 
   /** Park the loop in a free-form timed phase: broadcast a countdown (via
@@ -741,10 +786,23 @@ export class GameRunner<State, Decision> {
       if (!seatPilot) throw new Error(`no pilot registered for pending seat ${seat}`);
 
       const attempts: ActAttempt[] = [];
+      const controller = new AbortController();
+      this.#activeDecisions.add(controller);
+      let sealed = false;
       let usedFallback = false;
-      const ctx = this.#makeContext(seat, stateAtTurn, seatPilot.guidance, attempts, () => {
-        usedFallback = true;
-      });
+      const ctx = this.#makeContext(
+        seat,
+        stateAtTurn,
+        seatPilot.guidance,
+        attempts,
+        () => {
+          usedFallback = true;
+        },
+        controller.signal,
+        () => {
+          if (sealed) throw new Error("Decision evidence is sealed");
+        },
+      );
 
       // A human pilot is parked awaiting the player's input (it's their turn), not
       // composing a move — keep it OUT of #thinking so the roster shows "acting"
@@ -772,7 +830,16 @@ export class GameRunner<State, Decision> {
         if (outcome === "advance") {
           // The clock won: abandon the seat's in-flight decision and play baseline.
           usedFallback = true;
+          controller.abort(new Error("Decision deadline expired"));
           seatPilot.pilot.abort?.(seat);
+          const joinTimer: { id: ReturnType<typeof setTimeout> | null } = { id: null };
+          await Promise.race([
+            decided,
+            new Promise<void>((resolve) => {
+              joinTimer.id = setTimeout(resolve, Math.min(this.#maxTimeMs, 1000));
+            }),
+          ]);
+          if (joinTimer.id !== null) clearTimeout(joinTimer.id);
           decision = this.#game.baselineDecision(stateAtTurn, seat);
         } else if (outcome.ok) {
           decision = outcome.d;
@@ -787,6 +854,9 @@ export class GameRunner<State, Decision> {
           decision = this.#game.baselineDecision(stateAtTurn, seat);
         }
       } finally {
+        sealed = true;
+        controller.abort();
+        this.#activeDecisions.delete(controller);
         this.#disarmAdvance();
         this.#fireAdvance = null;
         this.#thinking.delete(seat);
@@ -816,6 +886,7 @@ export class GameRunner<State, Decision> {
         decision,
         attempts,
         status: usedFallback ? "fallback" : "accepted",
+        purpose: seatPilot.purpose,
         pilotKind: seatPilot.pilot.kind,
         policy: seatPilot.name || seatPilot.model,
       });
@@ -850,14 +921,20 @@ export class GameRunner<State, Decision> {
     guidance: string,
     attempts: ActAttempt[],
     markFallback: () => void,
+    signal: AbortSignal,
+    assertOpen: () => void,
   ): DecideContext<State, Decision> {
     const game = this.#game;
+    const seatPilot = this.#pilots.get(seat)!;
     return {
+      signal,
       game,
       state,
       seat,
       guidance,
       validate(candidate: unknown): Decision {
+        assertOpen();
+        signal.throwIfAborted();
         // Schema first (throws ZodError on shape mismatch), then a dry-run apply
         // so an illegal-but-well-typed move surfaces its GameError reason. Both
         // are re-promptable: the pilot may catch and retry.
@@ -870,8 +947,13 @@ export class GameRunner<State, Decision> {
         }
         return parsed;
       },
-      markFallback,
+      markFallback: () => {
+        assertOpen();
+        markFallback();
+      },
       recordSpeech: (speechAttempts, executed, failed) => {
+        assertOpen();
+        signal.throwIfAborted();
         if (speechAttempts.length === 0) return;
         this.#onDecision?.({
           seat,
@@ -880,13 +962,15 @@ export class GameRunner<State, Decision> {
           decision: executed,
           attempts: speechAttempts,
           status: failed ? "fallback" : "accepted",
-          pilotKind: this.#pilots.get(seat)!.pilot.kind,
-          policy: this.#pilots.get(seat)!.name || this.#pilots.get(seat)!.model,
+          purpose: seatPilot.purpose,
+          pilotKind: seatPilot.pilot.kind,
+          policy: seatPilot.name || seatPilot.model,
         });
       },
       recordAttempt(attempt: ActAttempt): void {
         // Uncapped private evidence is separate from the public replay.
-        attempts.push(structuredClone(attempt));
+        assertOpen();
+        recordAttemptSnapshot(attempts, attempt);
       },
     };
   }

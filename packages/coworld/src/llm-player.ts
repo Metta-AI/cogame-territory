@@ -37,7 +37,17 @@ export function makeLlmCoworldDecide<State, Decision, View>(
   if (!autopilot) throw new Error("makeLlmCoworldDecide requires module.autopilot");
   const client = opts.client ?? new OpenRouterLlmClient({ prefix: opts.prefix });
 
-  return ({ view, seat, reason, messages, timeLeftMs, recordAttempt, markFallback }) => {
+  return ({
+    view,
+    seat,
+    playerSlot,
+    signal,
+    reason,
+    messages,
+    timeLeftMs,
+    recordAttempt,
+    markFallback,
+  }) => {
     // The redacted view IS this player's working state: the autopilot, schema,
     // and baseline read only view-available fields. (Legality needs the full
     // state and is the host's job — hence schema-only validate here.)
@@ -45,12 +55,14 @@ export function makeLlmCoworldDecide<State, Decision, View>(
     const guidance = opts.guidanceFor?.(seat) ?? "";
     return robustDecide<Decision>({
       client,
+      purpose: { kind: "learner" },
+      signal: AbortSignal.any([signal, AbortSignal.timeout(client.timeoutMs)]),
       system:
         autopilot.systemPrompt({ game, seat }) +
         (autopilot.actionSchema
           ? `\nReturn only a JSON object matching this schema: ${JSON.stringify(autopilot.actionSchema(state, seat).inputSchema)}`
           : ""),
-      slot: seat,
+      slot: playerSlot,
       renderUser: (rejection) => {
         // Fold the seat's visible inbox into the prompt so the policy reacts to the
         // table talk it's entitled to (empty for a game with no comms).

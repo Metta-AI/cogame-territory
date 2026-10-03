@@ -29,7 +29,13 @@ interface S {
 }
 type D = { value: number };
 
-const fresh = (): S => ({ turn: 1, pending: [...Array(SEATS).keys()], applied: [], steps: 0, settled: null });
+const fresh = (): S => ({
+  turn: 1,
+  pending: [...Array(SEATS).keys()],
+  applied: [],
+  steps: 0,
+  settled: null,
+});
 
 /** A simultaneous game: every seat acts every turn; the engine steps only when the
  *  LAST seat's decision arrives (exactly the shape Territory's seam has). */
@@ -44,7 +50,11 @@ const batchGame: Game<S, D> & { simultaneous: true } = {
   decisionSchema: () => z.object({ value: z.number() }),
   applyDecision: (s, seat, d) => {
     if (!s.pending.includes(seat)) throw new Error(`seat ${seat} already submitted`);
-    const next: S = { ...s, pending: s.pending.filter((x) => x !== seat), applied: [...s.applied, [seat, d.value]] };
+    const next: S = {
+      ...s,
+      pending: s.pending.filter((x) => x !== seat),
+      applied: [...s.applied, [seat, d.value]],
+    };
     if (next.pending.length > 0) return { state: next };
     return {
       state: { ...next, turn: s.turn + 1, pending: [...Array(SEATS).keys()], steps: s.steps + 1 },
@@ -75,7 +85,13 @@ function stub(
   };
 }
 
-const seat = (pilot: Pilot<S, D>): SeatPilot<S, D> => ({ pilot, guidance: "", model: null, name: "" });
+const seat = (pilot: Pilot<S, D>): SeatPilot<S, D> => ({
+  purpose: "learner",
+  pilot,
+  guidance: "",
+  model: null,
+  name: "",
+});
 
 describe("GameRunner simultaneous batch", () => {
   it("invokes all nine BEFORE any resolves, on the identical pre-batch state", async () => {
@@ -104,7 +120,9 @@ describe("GameRunner simultaneous batch", () => {
       );
     }
 
-    const runner = new GameRunner(gameModule, pilots, { autoAdvance: { enabled: false, maxTimeMs: 0 } });
+    const runner = new GameRunner(gameModule, pilots, {
+      autoAdvance: { enabled: false, maxTimeMs: 0 },
+    });
     await runner.start();
 
     // Genuine concurrency: the barrier could only fall if all nine were in flight.
@@ -130,7 +148,9 @@ describe("GameRunner simultaneous batch", () => {
         }),
       );
     }
-    const runner = new GameRunner(gameModule, pilots, { autoAdvance: { enabled: false, maxTimeMs: 0 } });
+    const runner = new GameRunner(gameModule, pilots, {
+      autoAdvance: { enabled: false, maxTimeMs: 0 },
+    });
     await runner.start();
     const state = runner.state;
     expect(state.steps).toBe(3); // three turns, one step each
@@ -149,7 +169,8 @@ describe("GameRunner simultaneous batch", () => {
       autoAdvance: { enabled: true, maxTimeMs: 30 },
     });
     runner.onMessage((m) => {
-      if (m.type === "actPrompt") applied.push([m.actPrompt.seat, m.actPrompt.usedFallback ? -1 : 1]);
+      if (m.type === "actPrompt")
+        applied.push([m.actPrompt.seat, m.actPrompt.usedFallback ? -1 : 1]);
     });
     await runner.start();
 
@@ -245,4 +266,49 @@ describe("GameRunner simultaneous batch", () => {
     // It stopped EARLY: not all three turns were played.
     expect(runner.state.turn).toBeLessThan(4);
   });
+});
+
+it("aborts all nine owned generations and seals their evidence before simultaneous fallback application", async () => {
+  vi.useFakeTimers();
+  const signals: AbortSignal[] = [];
+  const late: Array<() => void> = [];
+  const records: import("../src/pilot.js").DecisionTelemetryEvent<unknown>[] = [];
+  const pilots = new Map<number, SeatPilot<S, D>>();
+  for (let id = 0; id < SEATS; id++)
+    pilots.set(
+      id,
+      seat({
+        kind: "llm",
+        decide: (ctx) => {
+          signals.push(ctx.signal);
+          const attempt = {
+            generationId: `${ctx.state.turn}:${id}`,
+            prompt: `private ${id}`,
+            response: "started",
+            error: null,
+          };
+          ctx.recordAttempt(attempt);
+          late.push(() => ctx.recordAttempt({ ...attempt, response: "late" }));
+          return new Promise<D>(() => {});
+        },
+      }),
+    );
+  const runner = new GameRunner(gameModule, pilots, {
+    autoAdvance: { enabled: true, maxTimeMs: 10 },
+    onDecision: (event) => {
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+      records.push(event);
+    },
+  });
+  try {
+    const done = runner.start();
+    await vi.advanceTimersByTimeAsync(100);
+    await done;
+    expect(records).toHaveLength(27);
+    expect(records.every((record) => record.status === "fallback")).toBe(true);
+    for (const write of late) expect(write).toThrow("Decision evidence is sealed");
+    expect(records.every((record) => record.attempts[0]!.response === "started")).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });

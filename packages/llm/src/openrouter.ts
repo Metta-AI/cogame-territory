@@ -1,6 +1,11 @@
 // One direct text-action transport for local and hosted Coworld policies.
 import { z } from "zod";
-import { GenerationEvidenceError, SamplingEvidence, type TextGeneration } from "@cogweb/protocol";
+import {
+  GenerationEvidenceError,
+  SamplingEvidence,
+  GenerationPurpose,
+  type TextGeneration,
+} from "@cogweb/protocol";
 
 export interface LlmMessage {
   role: "user" | "assistant";
@@ -112,7 +117,12 @@ export class OpenRouterLlmClient {
     this.#hostedGateway = Boolean(endpoint);
     this.#model =
       (endpoint ? process.env.COWORLD_LLM_MODEL : undefined) ?? opts.model ?? config.model;
-    this.#timeoutMs = opts.timeoutMs ?? config.timeoutMs;
+    this.#timeoutMs = z
+      .number()
+      .int()
+      .positive()
+      .max(600_000)
+      .parse(opts.timeoutMs ?? config.timeoutMs);
     this.#maxTokens = opts.maxTokens ?? 1024;
     this.#temperature = opts.temperature ?? Number(process.env.COWORLD_LLM_TEMPERATURE ?? 0);
     this.#endpoint = (endpoint ?? opts.baseUrl ?? "https://openrouter.ai/api").replace(/\/+$/, "");
@@ -124,7 +134,13 @@ export class OpenRouterLlmClient {
     return this.#model;
   }
 
+  get timeoutMs(): number {
+    return this.#timeoutMs;
+  }
+
   async complete(req: {
+    purpose: GenerationPurpose;
+    signal: AbortSignal;
     system: string;
     slot?: number;
     messages: LlmMessage[];
@@ -132,6 +148,7 @@ export class OpenRouterLlmClient {
     model?: string;
     recordGeneration: (generation: TextGeneration) => void;
   }): Promise<LlmResult> {
+    req.signal.throwIfAborted();
     if (!this.#apiKey)
       throw new MissingLlmCredentialsError(
         "Set COWORLD_LLM_ENDPOINT or OPENROUTER_API_KEY for LLM play",
@@ -140,96 +157,111 @@ export class OpenRouterLlmClient {
       { role: "system", content: req.system },
       ...req.messages.map(({ role, text }) => ({ role, content: text })),
     ];
+    const purpose = GenerationPurpose.parse(req.purpose);
+    const environment = purpose.kind === "environment" ? purpose : null;
     const request = {
-      model: this.#hostedGateway ? this.#model : req.model || this.#model,
+      model: environment
+        ? environment.model
+        : this.#hostedGateway
+          ? this.#model
+          : req.model || this.#model,
       messages,
-      max_tokens: req.maxTokens ?? this.#maxTokens,
-      temperature: this.#temperature,
+      max_tokens: environment ? environment.decoder.maxTokens : (req.maxTokens ?? this.#maxTokens),
+      temperature: environment ? environment.decoder.temperature : this.#temperature,
+      ...(environment ? { top_p: environment.decoder.topP } : {}),
     };
     const startedAt = performance.now();
     const generation: TextGeneration = {
+      purpose,
       model: request.model,
       messages,
       response: "",
       inputTokens: null,
       outputTokens: null,
       latencyMs: null,
-      inferenceMode: "text_action",
+      inferenceMode: purpose.kind === "learner" ? "text_action" : undefined,
       platformCallId: null,
       request,
       decoder: {
         temperature: request.temperature,
         max_tokens: request.max_tokens,
+        ...(environment ? { top_p: environment.decoder.topP } : {}),
         timeout_ms: this.#timeoutMs,
       },
     };
     req.recordGeneration(generation);
-    const response = await this.#fetch(`${this.#endpoint}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.#apiKey}`,
-        "content-type": "application/json",
-        ...(this.#hostedGateway && req.slot !== undefined
-          ? { "X-Coworld-Player-Slot": String(req.slot) }
-          : {}),
-      },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
-    Object.assign(generation, {
-      latencyMs: performance.now() - startedAt,
-      platformCallId: response.headers.get("X-Softmax-Llm-Call-Id"),
-      modelIdentity: response.headers.get("X-Coworld-Checkpoint-Sha256"),
-      tokenizerIdentity: response.headers.get("X-Coworld-Tokenizer-Sha256"),
-      chatTemplateSha256: response.headers.get("X-Coworld-Chat-Template-Sha256"),
-    });
-    req.recordGeneration(generation);
-    const rawBody = await response.text();
-    Object.assign(generation, {
-      response: rawBody,
-      rawResponse: rawBody,
-      latencyMs: performance.now() - startedAt,
-    });
-    req.recordGeneration(generation);
-    if (!response.ok)
-      throw new GenerationEvidenceError(
-        `Text completion failed (${response.status}): ${rawBody}`,
+    try {
+      const response = await this.#fetch(`${this.#endpoint}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#apiKey}`,
+          "content-type": "application/json",
+          ...(this.#hostedGateway && purpose.kind === "learner" && req.slot !== undefined
+            ? { "X-Coworld-Player-Slot": String(req.slot) }
+            : {}),
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.any([req.signal, AbortSignal.timeout(this.#timeoutMs)]),
+      });
+      Object.assign(generation, {
+        latencyMs: performance.now() - startedAt,
+        responseHeaders: Object.fromEntries(response.headers.entries()),
+        providerRequestId: response.headers.get("x-request-id"),
+        platformCallId: response.headers.get("X-Softmax-Llm-Call-Id"),
+        modelIdentity: response.headers.get("X-Coworld-Checkpoint-Sha256"),
+        tokenizerIdentity: response.headers.get("X-Coworld-Tokenizer-Sha256"),
+        chatTemplateSha256: response.headers.get("X-Coworld-Chat-Template-Sha256"),
+      });
+      req.recordGeneration(generation);
+      const rawBody = await response.text();
+      Object.assign(generation, {
+        response: rawBody,
+        rawResponse: rawBody,
+        latencyMs: performance.now() - startedAt,
+      });
+      req.recordGeneration(generation);
+      if (!response.ok)
+        throw new GenerationEvidenceError(
+          `Text completion failed (${response.status}): ${rawBody}`,
+          generation,
+        );
+      const rawResponse: unknown = JSON.parse(rawBody);
+      const output = CompletionResponse.parse(rawResponse);
+      req.signal.throwIfAborted();
+      const text = output.choices[0]!.message.content;
+      const usage: LlmUsage = {
+        inputTokens: output.usage?.prompt_tokens ?? 0,
+        outputTokens: output.usage?.completion_tokens ?? 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      Object.assign(generation, {
+        model: output.model,
+        response: text,
+        inputTokens: output.usage?.prompt_tokens ?? null,
+        outputTokens: output.usage?.completion_tokens ?? null,
+        stopReason: output.choices[0]!.finish_reason,
+        samplingEvidence: output.sampling_evidence,
+        latencyMs: performance.now() - startedAt,
+      });
+      req.recordGeneration(generation);
+      processUsage = {
+        calls: processUsage.calls + 1,
+        inputTokens: processUsage.inputTokens + usage.inputTokens,
+        outputTokens: processUsage.outputTokens + usage.outputTokens,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      return {
+        text,
+        usage,
         generation,
-      );
-    const rawResponse: unknown = JSON.parse(rawBody);
-    generation.rawResponse = rawResponse;
-    req.recordGeneration(generation);
-    const output = CompletionResponse.parse(rawResponse);
-    const text = output.choices[0]!.message.content;
-    const usage: LlmUsage = {
-      inputTokens: output.usage?.prompt_tokens ?? 0,
-      outputTokens: output.usage?.completion_tokens ?? 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    };
-    Object.assign(generation, {
-      model: output.model,
-      response: text,
-      inputTokens: output.usage?.prompt_tokens ?? null,
-      outputTokens: output.usage?.completion_tokens ?? null,
-      stopReason: output.choices[0]!.finish_reason,
-      samplingEvidence: output.sampling_evidence,
-      latencyMs: performance.now() - startedAt,
-    });
-    req.recordGeneration(generation);
-    processUsage = {
-      calls: processUsage.calls + 1,
-      inputTokens: processUsage.inputTokens + usage.inputTokens,
-      outputTokens: processUsage.outputTokens + usage.outputTokens,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    };
-    return {
-      text,
-      usage,
-      generation,
-      platformCallId: generation.platformCallId ?? null,
-      providerRequestId: response.headers.get("x-request-id"),
-    };
+        platformCallId: generation.platformCallId ?? null,
+        providerRequestId: response.headers.get("x-request-id"),
+      };
+    } finally {
+      generation.latencyMs = performance.now() - startedAt;
+      req.recordGeneration(generation);
+    }
   }
 }

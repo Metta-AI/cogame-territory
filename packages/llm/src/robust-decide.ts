@@ -11,7 +11,7 @@
 // exhaustion, and treating a terminal no-credentials transport error as an
 // immediate baseline (re-prompting is futile — there is no model to reach). No
 // failure escapes this function: the caller always gets a decision.
-import type { ActAttempt, TextGeneration } from "@cogweb/protocol";
+import type { ActAttempt, TextGeneration, GenerationPurpose } from "@cogweb/protocol";
 import { isCredentialsUnavailable } from "./openrouter.js";
 import type { OpenRouterLlmClient, LlmMessage } from "./openrouter.js";
 
@@ -48,6 +48,8 @@ export function extractJson(text: string): unknown {
 
 export interface RobustDecideOpts<Decision> {
   client: OpenRouterLlmClient;
+  signal: AbortSignal;
+  purpose: GenerationPurpose;
   /** System prompt: rules, strategy, output-format contract. */
   system: string;
   slot?: number;
@@ -74,18 +76,32 @@ export async function robustDecide<Decision>(opts: RobustDecideOpts<Decision>): 
   let rejection: string | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    opts.signal.throwIfAborted();
+    const generationId = globalThis.crypto.randomUUID();
     const prompt = opts.renderUser(rejection);
     const messages: LlmMessage[] = [{ role: "user", text: prompt }];
     let reply;
     let generation: TextGeneration | undefined;
     try {
       reply = await opts.client.complete({
+        signal: opts.signal,
+        purpose: opts.purpose,
         system: opts.system,
         messages,
         slot: opts.slot,
         model: opts.model,
         recordGeneration: (evidence) => {
           generation = evidence;
+          opts.recordAttempt({
+            generationId,
+            purpose: opts.purpose,
+            prompt,
+            response: evidence.response,
+            error: null,
+            generation: evidence,
+            platformCallId: evidence.platformCallId ?? null,
+            providerRequestId: evidence.providerRequestId ?? null,
+          });
         },
       });
     } catch (err) {
@@ -93,11 +109,14 @@ export async function robustDecide<Decision>(opts: RobustDecideOpts<Decision>): 
       // re-fails. Record it and play baseline now so the turn resolves instantly.
       if (isCredentialsUnavailable(err)) {
         opts.recordAttempt({
+          generationId,
+          purpose: opts.purpose,
           prompt,
           response: generation?.response ?? "",
           error: err instanceof Error ? err.message : String(err),
           generation,
           platformCallId: generation?.platformCallId ?? null,
+          providerRequestId: generation?.providerRequestId ?? null,
         });
         opts.markFallback();
         return opts.baseline();
@@ -109,14 +128,19 @@ export async function robustDecide<Decision>(opts: RobustDecideOpts<Decision>): 
       // propagated out of the player process, so a single throttle cost the seat
       // the rest of the episode instead of degrading it to its scripted move.
       opts.recordAttempt({
+        generationId,
+        purpose: opts.purpose,
         prompt,
         response: generation?.response ?? "",
         error: err instanceof Error ? err.message : String(err),
         generation,
         platformCallId: generation?.platformCallId ?? null,
+        providerRequestId: generation?.providerRequestId ?? null,
       });
+      opts.signal.throwIfAborted();
       continue;
     }
+    opts.signal.throwIfAborted();
     const response = reply.text;
 
     try {
@@ -125,22 +149,28 @@ export async function robustDecide<Decision>(opts: RobustDecideOpts<Decision>): 
       const candidate = extractJson(reply.text);
       const decision = opts.validate(candidate);
       opts.recordAttempt({
+        generationId,
+        purpose: opts.purpose,
         prompt,
         response,
         error: null,
         generation: reply.generation,
         parsedAction: decision,
         platformCallId: reply.platformCallId,
+        providerRequestId: reply.generation.providerRequestId ?? null,
       });
       return decision;
     } catch (err) {
       rejection = err instanceof Error ? err.message : String(err);
       opts.recordAttempt({
+        generationId,
+        purpose: opts.purpose,
         prompt,
         response,
         error: rejection,
         generation: reply.generation,
         platformCallId: reply.platformCallId,
+        providerRequestId: reply.generation.providerRequestId ?? null,
       });
     }
   }

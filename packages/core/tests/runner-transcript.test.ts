@@ -41,6 +41,7 @@ async function recordOne(attempt: {
     [
       0,
       {
+        purpose: "learner",
         pilot: {
           kind: "remote",
           decide: async (ctx) => {

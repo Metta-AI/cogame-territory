@@ -57,6 +57,9 @@ export function makeLlmDecide(
     let usedFallback = true;
     const decision = await robustDecide<TerritoryDecision>({
       client,
+      purpose: { kind: "learner" },
+      signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(client.timeoutMs)]),
+      slot: ctx.playerSlot,
       system: messages[0]!.content,
       renderUser: (rejection) => {
         return messages[1]!.content + (rejection ? `\n\n${rejection}` : "");
@@ -67,7 +70,6 @@ export function makeLlmDecide(
         return parsed;
       },
       baseline: () => fallbackMove(baseline, view),
-      slot: ctx.seat,
       recordAttempt: ctx.recordAttempt,
       markFallback: ctx.markFallback,
       maxAttempts: MAX_ATTEMPTS,

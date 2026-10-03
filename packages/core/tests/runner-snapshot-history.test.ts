@@ -33,7 +33,13 @@ const countGame: Game<S, D> = {
 };
 const gameModule: GameModule<S, D> = { game: countGame };
 
-const seat = (): SeatPilot<S, D> => ({ pilot: new ScriptedPilot(), guidance: "", model: null, name: "" });
+const seat = (): SeatPilot<S, D> => ({
+  purpose: "learner",
+  pilot: new ScriptedPilot(),
+  guidance: "",
+  model: null,
+  name: "",
+});
 
 describe("GameRunner snapshot history", () => {
   it("records one snapshot per turn, in turn order, for connect-time backfill", async () => {

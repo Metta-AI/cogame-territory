@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { parsePlayerFrame } from "./protocol";
 // The coworld game-HOST: the `/player` websocket bridge every game runs on the
 // Softmax platform. It is the generic half that all games shared by copy — now
 // owned here, parameterized by the small game-specific surface (the module, how
@@ -124,6 +126,8 @@ function mountClient(app: express.Express, client: CoworldClient): void {
 interface SlotEnds {
   pilot?: WebSocket;
   player?: WebSocket;
+  artifactCompletionExpected?: boolean;
+  decisionCancellationSupported?: boolean;
 }
 
 /** Binds an external player slot to this host's `/player` bridge as a runner
@@ -219,6 +223,8 @@ export async function runCoworldHost<State, Decision, Results>(
   mountClient(app, opts.client);
   const server = createServer(app);
   const wss = new WebSocketServer({ noServer: true });
+  const pendingUploads = new Map<number, () => void>();
+  const PLAYER_UPLOAD_TIMEOUT_MS = 300_000;
   const ends = new Map<number, SlotEnds>();
   const endsFor = (slot: number): SlotEnds => {
     let e = ends.get(slot);
@@ -307,6 +313,26 @@ export async function runCoworldHost<State, Decision, Results>(
       if (connectedPlayers.size === slots) markAllConnected();
     }
     ws.on("message", (raw: Buffer) => {
+      if (
+        role === "pilot" &&
+        JSON.parse(raw.toString()).type === "cancel" &&
+        !endsFor(slot).decisionCancellationSupported
+      )
+        return;
+      if (role === "player") {
+        const parsed = parsePlayerFrame(raw.toString());
+        if (parsed.kind !== "message") {
+          console.error(`[coworld-host] slot ${slot}: dropping ${parsed.kind} frame`);
+          return;
+        }
+        if (parsed.message.type === "artifact_complete") {
+          const acknowledge = pendingUploads.get(slot);
+          if (!acknowledge) throw new Error("Unexpected player artifact completion");
+          pendingUploads.delete(slot);
+          acknowledge();
+          return;
+        }
+      }
       const peer = role === "pilot" ? endsFor(slot).player : endsFor(slot).pilot;
       peer?.send(raw.toString());
     });
@@ -337,6 +363,11 @@ export async function runCoworldHost<State, Decision, Results>(
       socket.destroy();
       return;
     }
+    if (auth.role === "player")
+      endsFor(auth.slot).decisionCancellationSupported =
+        url.searchParams.get("decision_cancel") === "1";
+    if (auth.role === "player")
+      endsFor(auth.slot).artifactCompletionExpected = url.searchParams.get("artifact_ack") === "1";
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, auth.slot, auth.role));
   };
   server.on("upgrade", onUpgrade);
@@ -371,6 +402,7 @@ export async function runCoworldHost<State, Decision, Results>(
     const pilots = new Map<number, SeatPilot<State, Decision>>();
     for (let slot = 0; slot < slots; slot++) {
       pilots.set(slot, {
+        purpose: "learner",
         pilot: mk(slot),
         guidance: "",
         model: null,
@@ -383,6 +415,7 @@ export async function runCoworldHost<State, Decision, Results>(
 
   const episodeId = process.env.COWORLD_EPISODE_ID ?? randomUUID();
   const decisions: unknown[] = [];
+  const environmentDecisions: unknown[] = [];
   const provenance = {
     game: opts.module.game.id,
     game_version: process.env.COWORLD_GAME_VERSION ?? null,
@@ -395,6 +428,10 @@ export async function runCoworldHost<State, Decision, Results>(
     seed: opts.seed === undefined ? undefined : String(opts.seed),
     rules: opts.rules,
     onDecision: (event) => {
+      if (event.purpose === "environment") {
+        environmentDecisions.push(structuredClone(event));
+        return;
+      }
       const decisionIndex = decisions.length;
       const attemptIds = event.attempts.map(() => randomUUID());
       const selectedIndex =
@@ -429,6 +466,9 @@ export async function runCoworldHost<State, Decision, Results>(
           prompt: attempt.generation?.messages ?? attempt.prompt,
           request: attempt.generation?.request ?? null,
           raw_response: attempt.generation?.rawResponse ?? null,
+          response_headers: attempt.generation?.responseHeaders ?? null,
+          provider_request_id:
+            attempt.generation?.providerRequestId ?? attempt.providerRequestId ?? null,
           model: attempt.generation?.model ?? null,
           inference_mode: attempt.generation?.inferenceMode ?? null,
           decoder: attempt.generation?.decoder ?? null,
@@ -535,7 +575,38 @@ export async function runCoworldHost<State, Decision, Results>(
     // the worker collects player logs + tears down pods as soon as results.json and
     // the replay exist; writing those first would race (and usually lose) that line.
     const finalFrame = JSON.stringify({ type: "final", scores });
-    for (let slot = 0; slot < slots; slot++) endsFor(slot).player?.send(finalFrame);
+    const uploads: Promise<void>[] = [];
+    for (let slot = 0; slot < slots; slot++) {
+      const ends = endsFor(slot);
+      const player = ends.player;
+      if (player?.readyState !== WebSocket.OPEN) continue;
+      if (!ends.artifactCompletionExpected) {
+        player.send(finalFrame);
+        continue;
+      }
+      uploads.push(
+        new Promise<void>((resolve, reject) => {
+          const onClose = () => {
+            clearTimeout(timeout);
+            pendingUploads.delete(slot);
+            reject(new Error(`Player ${slot} disconnected before artifact completion`));
+          };
+          const timeout = setTimeout(() => {
+            player.off("close", onClose);
+            pendingUploads.delete(slot);
+            reject(new Error(`Player ${slot} artifact upload timed out`));
+          }, PLAYER_UPLOAD_TIMEOUT_MS);
+          player.once("close", onClose);
+          pendingUploads.set(slot, () => {
+            clearTimeout(timeout);
+            player.off("close", onClose);
+            resolve();
+          });
+          player.send(finalFrame);
+        }),
+      );
+    }
+    await Promise.all(uploads);
 
     await writeTrajectory({
       schema_version: "1",
@@ -548,7 +619,10 @@ export async function runCoworldHost<State, Decision, Results>(
         seed_family: runner!.evidenceSeed,
         ...provenance,
         status: runner!.settledEarly ? "truncated" : "completed",
-        outcome: results,
+        outcome: {
+          ...z.record(z.unknown()).parse(results),
+          environment_decisions: environmentDecisions,
+        },
         participant_outcomes: scores,
       },
       decisions,
@@ -561,7 +635,7 @@ export async function runCoworldHost<State, Decision, Results>(
     if (hasReplayUri())
       await writeReplay({
         protocol: "cogweb.replay.v1",
-        ...(opts.replayMeta?.(runner!.state, results) ?? {}),
+        ...opts.replayMeta?.(runner!.state, results),
         frames: replayFrames,
         usage: llmUsageTotals(),
       });

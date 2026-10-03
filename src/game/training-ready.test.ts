@@ -88,7 +88,9 @@ it("completes the real nine-seat production loop with exact private attempts and
       for (const attempt of decision.attempts) {
         expect(attempt.inference_mode).toBe("text_action");
         expect(attempt.request).toEqual(byId.get(attempt.platform_call_id)!.request);
-        expect(attempt.raw_response).toEqual(byId.get(attempt.platform_call_id)!.response);
+        expect(attempt.raw_response).toBe(
+          JSON.stringify(byId.get(attempt.platform_call_id)!.response),
+        );
         expect(attempt.prompt).toEqual(attempt.request.messages);
         const observation = bridge.observation();
         if (observation.kind !== "decision") throw new Error("Bridge ended before hosted loop");

@@ -58,6 +58,8 @@ async function run(
   const { client, calls } = fakeClient(script);
   const attempts: Array<{ error: string | null }> = [];
   const decision = await robustDecide<Move>({
+    purpose: { kind: "learner" },
+    signal: AbortSignal.timeout(30_000),
     client,
     system: "s",
     renderUser: () => "u",
@@ -95,7 +97,13 @@ describe("robustDecide on a transport failure", () => {
     vi.stubEnv("COWORLD_LLM_ENDPOINT", "");
     vi.stubEnv("OPENROUTER_API_KEY", "");
     const error = await new OpenRouterLlmClient()
-      .complete({ system: "s", messages: [], recordGeneration: () => {} })
+      .complete({
+        purpose: { kind: "learner" },
+        signal: AbortSignal.timeout(30_000),
+        system: "s",
+        messages: [],
+        recordGeneration: () => {},
+      })
       .catch((error) => error);
     const out = await run([error, error]);
     expect(out.decision).toEqual({ move: "scripted" });

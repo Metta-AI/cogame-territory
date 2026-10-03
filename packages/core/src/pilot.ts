@@ -7,12 +7,24 @@
 import type { ActAttempt, FeedEvent } from "@cogweb/protocol";
 import type { Game } from "./game";
 
+/** Replace request-local evidence without sharing mutable transport objects. */
+export function recordAttemptSnapshot(attempts: ActAttempt[], attempt: ActAttempt): void {
+  const snapshot = structuredClone(attempt);
+  const index = attempts.findIndex(
+    (recorded) =>
+      attempt.generationId !== undefined && recorded.generationId === attempt.generationId,
+  );
+  if (index < 0) attempts.push(snapshot);
+  else attempts[index] = snapshot;
+}
+
 export interface DecideContext<State, Decision> {
   readonly game: Game<State, Decision>;
   readonly state: State;
   readonly seat: number;
   /** Operator/human guidance steering an LLM pilot (empty for non-LLM). */
   readonly guidance: string;
+  readonly signal: AbortSignal;
   /**
    * Validate a candidate against schema AND legality (a dry-run applyDecision).
    * Returns the typed decision, or throws with a human-readable reason suitable
@@ -61,4 +73,5 @@ export interface DecisionTelemetryEvent<Decision> {
   status: "accepted" | "fallback";
   pilotKind: Pilot<unknown, Decision>["kind"];
   policy: string | null;
+  purpose: "learner" | "environment";
 }

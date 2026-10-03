@@ -76,10 +76,13 @@ export const FinalMessage = z.object({
 });
 export type FinalMessage = z.infer<typeof FinalMessage>;
 
+export const CancelMessage = z.object({ type: z.literal("cancel"), id: z.number().int() });
+export type CancelMessage = z.infer<typeof CancelMessage>;
 export const GameToPlayer = z.discriminatedUnion("type", [
   WelcomeMessage,
   ObservationMessage,
   FinalMessage,
+  CancelMessage,
 ]);
 export type GameToPlayer = z.infer<typeof GameToPlayer>;
 
@@ -108,7 +111,13 @@ export const FailureMessage = z.object({
   speechAttempts: z.array(ActAttempt),
 });
 export type FailureMessage = z.infer<typeof FailureMessage>;
-export const PlayerToGame = z.discriminatedUnion("type", [ReplyMessage, FailureMessage]);
+export const ArtifactCompleteMessage = z.object({ type: z.literal("artifact_complete") });
+export type ArtifactCompleteMessage = z.infer<typeof ArtifactCompleteMessage>;
+export const PlayerToGame = z.discriminatedUnion("type", [
+  ReplyMessage,
+  FailureMessage,
+  ArtifactCompleteMessage,
+]);
 export type PlayerToGame = z.infer<typeof PlayerToGame>;
 
 export function parseGameToPlayer(raw: unknown): GameToPlayer {
@@ -117,4 +126,23 @@ export function parseGameToPlayer(raw: unknown): GameToPlayer {
 
 export function parsePlayerToGame(raw: unknown): PlayerToGame {
   return PlayerToGame.parse(raw);
+}
+
+/** Shared JSON-text boundary for the authenticated host bridge and remote pilot. */
+export function parsePlayerFrame(
+  text: string,
+):
+  | { kind: "message"; message: PlayerToGame }
+  | { kind: "invalid_json" }
+  | { kind: "invalid_schema"; error: string } {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { kind: "invalid_json" };
+  }
+  const parsed = PlayerToGame.safeParse(json);
+  return parsed.success
+    ? { kind: "message", message: parsed.data }
+    : { kind: "invalid_schema", error: parsed.error.message };
 }
