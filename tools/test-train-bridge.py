@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 manifest = Path(__file__).resolve().parents[1] / "coworld_manifest_template.json"
 for variant in ("open", "rooms", "inside_out"):
     for policy in ("teacher", "random"):
