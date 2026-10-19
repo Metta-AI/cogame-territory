@@ -1,5 +1,6 @@
 """Exercise complete Territory games through the numeric bridge."""
 
+import hashlib
 import json
 import random
 import subprocess
@@ -23,7 +24,16 @@ for variant in ("open", "rooms", "inside_out"):
                 bridge.stdin.flush()
                 return json.loads(bridge.stdout.readline())
 
-            observation = request({"kind": "reset", "seed": f"{variant}-{policy}", "players": 9})
+            wording = "canonical" if policy == "teacher" else "mixed"
+            observation = request(
+                {
+                    "kind": "reset",
+                    "seed": f"{variant}-{policy}",
+                    "players": 9,
+                    "promptVariant": wording,
+                    "promptSeed": 7,
+                }
+            )
             rng = random.Random(42)
             decisions = 0
             while observation["kind"] == "decision":
@@ -31,6 +41,15 @@ for variant in ("open", "rooms", "inside_out"):
                 assert view["you"]["seat"] == observation["seat"]
                 assert "paint" not in view["cogs"][0]
                 assert observation["messages"][1]["content"].startswith("TURN ")
+                system, user = [message["content"] for message in observation["messages"]]
+                assert view["prompt_template"] == {
+                    "bank": "territory-rules-v1",
+                    "selection": wording,
+                    "variant": "canonical" if policy == "teacher" else "numbered",
+                    "seed": 7,
+                    "system_sha256": hashlib.sha256(system.encode()).hexdigest(),
+                    "user_sha256": hashlib.sha256(user.encode()).hexdigest(),
+                }
                 encoded = request({"kind": "encode"})
                 assert encoded["decision_id"] == observation["decision_id"]
                 assert len(encoded["values"]) == 908

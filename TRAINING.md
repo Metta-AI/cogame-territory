@@ -61,6 +61,9 @@ and four transfer amounts for each other seat. The production legality
 predicate masks unavailable choices. All living seats choose against one
 pre-turn state, then the production simulator advances. The full hosted
 observation remains in `semantic_view` and `messages`.
+Reset accepts the same `promptVariant`, `promptSeed`, and `split` fields as
+the text bridge. Exact message hashes appear in `semantic_view.prompt_template`;
+prompt selection does not change the 908 numeric features or action catalog.
 
 ```sh
 pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
