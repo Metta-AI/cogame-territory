@@ -42,7 +42,7 @@ for variant in ("open", "rooms", "inside_out"):
                 assert observation["messages"][1]["content"].startswith("TURN ")
                 system, user = [message["content"] for message in observation["messages"]]
                 assert view["prompt_template"] == {
-                    "bank": "territory-rules-v1",
+                    "bank": "territory-rules-v2",
                     "selection": wording,
                     "variant": "canonical" if policy == "teacher" else "numbered",
                     "seed": 7,

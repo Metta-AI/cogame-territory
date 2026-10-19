@@ -1,56 +1,36 @@
-# Territory post-training
+# Territory prompt diversity and training
 
-`tools/export-posttrain.ts` plays ten complete native games per certified
-variant. At each turn it captures the production system prompt and rendered
-seat observation. The maintained homesteader and raider policies provide
-decisions accepted by the production parser and legality predicate. All nine
-seats choose against the same pre-turn state, then the pure simulator advances.
-The output is a private trajectory candidate stream. The shared Coworld importer
-owns split assignment and review; seed families span wording and board variants.
+The v2 bank retains the original canonical rules and provides five training
+presentations: `canonical`, `plain`, `numbered`, `questions`, and `reordered`.
+Alternate presentations paraphrase board, economy, orders, survival, simultaneous
+resolution, scoring, and budgets; their section order and headings vary.
+The reply contract, worked example, doctrine, and strategy guidance remain fixed.
+
+`mixed` requires an independent nonnegative `promptSeed`, choosing one training
+presentation once per episode. `heldout-briefing` and `heldout-reference` are
+reserved for evaluation. Collection rejects held-out wording for training;
+use `split: "validation"` or `split: "test"` for held-out bridge resets.
+
+## Complete-game exports
 
 ```sh
-pnpm install --frozen-lockfile
+pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open mixed 0
 node tools/test-posttrain.mjs
-pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open mixed 17
 ```
 
-The other certified variants are `rooms` and `inside_out`. The previous direct exporter yielded
-1,296 training and 324 validation decisions for `open`, 1,255 and 307 for
-`rooms`, and 1,296 and 324 for `inside_out`. The largest examples used 3,508,
-2,755, and 3,007 tokens with a local Qwen2.5 tokenizer, within 4,096 tokens.
-One CPU optimizer step on a tiny local model reduced validation loss from
-5.5555 to 5.4672, 5.5526 to 5.4610, and 5.5555 to 5.4680, respectively.
-These short runs verify the training path, not policy quality.
+The native exporter runs the certified 18-turn, nine-seat game with the
+homesteader and raider teachers. All submissions are validated before the
+simultaneous turn resolves. Exports contain `train.jsonl`, `validation.jsonl`,
+and `manifest.json`. Every fifth seed belongs to validation; mixed wording
+cycles separately within each split. Scenario families identify a variant
+and seed. Exact message hashes accompany every exported decision.
+Existing output directories are rejected. Opponents' balances and pending
+orders remain private.
 
-The current exporter requires a clean source commit and writes mode-0600
-`trajectories.jsonl` and `manifest.json`. Records identify teacher origin, source
-revision, prompt hashes, accepted actions, and complete outcomes. They require
-independent review before training admission and are not ready training datasets.
-
-The exporter uses the same anonymous aliases and redacted observation as
-the hosted player. Opponents' paint balances, pending orders, and private
-messages to other seats stay hidden.
-
-## Prompt selection
-
-`promptVariant` accepts `canonical`, `plain`, `numbered`, `questions`, `reordered`,
-`heldout-briefing`, `heldout-reference`, and `mixed`. The canonical default preserves
-the original instructions. Only the introductory wording changes; doctrine, rules,
-action schema, private observations, and timing budgets remain fixed.
-
-`mixed` requires an explicit nonnegative integer `promptSeed`, independent of the
-board seed. Its remainder modulo five selects one training wording for the episode.
-Held-out wordings are evaluation-only. The host sends selection in the welcome
-configuration; the ordinary player and text bridge use the same renderer.
-
-```sh
-pnpm build:training
-python3 tools/test-prompt-games.py "$PWD/dist-server/game/training-bridge.js"
-```
-
-Text-bridge reset accepts `variant`, `promptVariant`, `promptSeed`, and `split`
-(`train`, `validation`, or `test`). Training rejects held-out wording. Complete-game
-comparisons establish semantic preservation, not improved model learning stability.
+Complete-game wording comparisons check mechanics and provenance, not learned
+robustness. Learning comparisons must match policies, game seeds, and inference
+settings, report failures and fallbacks, and reserve held-out presentations
+until training choices are frozen.
 
 ## Numeric reinforcement learning
 

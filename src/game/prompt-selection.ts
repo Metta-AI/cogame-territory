@@ -1,21 +1,6 @@
 import { z } from "zod";
 
-export const PROMPT_BANK = "territory-rules-v1";
-export const INTRODUCTIONS = {
-  canonical: "You are one of nine Cogs painting your claim onto a hex lattice of resource walls.",
-  plain: "Nine Cogs compete to claim resource walls on a hex lattice. You control one Cog.",
-  numbered:
-    "Your setting: a hex lattice of resource walls. Your role: one of nine Cogs claiming those walls.",
-  questions:
-    "Where are you playing? A hex lattice of resource walls. Who are you? One of nine Cogs making claims.",
-  reordered:
-    "On a hex lattice of resource walls, nine Cogs paint their claims. One of those Cogs is yours to control.",
-  "heldout-briefing":
-    "You control a Cog in a nine-Cog game of claiming resource walls across a hex lattice.",
-  "heldout-reference":
-    "Game setting: resource walls arranged on a hex lattice; participants: nine Cogs, including yours.",
-} as const;
-
+export const PROMPT_BANK = "territory-rules-v2";
 export const TRAINING_VARIANTS = [
   "canonical",
   "plain",
@@ -44,7 +29,7 @@ export const promptSelectionSchema = z
   }));
 export type PromptSelection = z.infer<typeof promptSelectionSchema>;
 
-export function selectedVariant(selection: PromptSelection): keyof typeof INTRODUCTIONS {
+export function selectedVariant(selection: PromptSelection): Exclude<PromptSelection["promptVariant"], "mixed"> {
   return selection.promptVariant === "mixed"
     ? TRAINING_VARIANTS[selection.promptSeed % TRAINING_VARIANTS.length]!
     : selection.promptVariant;
