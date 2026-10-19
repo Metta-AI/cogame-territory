@@ -15,6 +15,7 @@
 // agree.
 
 import { buildManifest } from "@cogweb/coworld";
+import { promptVariantSchema } from "./prompt-selection.js";
 import type { CoworldManifest, JsonSchema, PlayerRunnable, Variant } from "@cogweb/coworld";
 
 import {
@@ -85,6 +86,18 @@ const configSchema: JsonSchema = {
         "Optional deterministic episode seed. Omit it for a fresh random board per episode " +
         "(the league default); the certification fixture pins one for a reproducible run.",
     },
+    promptVariant: {
+      type: "string",
+      enum: promptVariantSchema.options,
+      default: "canonical",
+      description: "Episode-stable wording; held-out variants are evaluation-only.",
+    },
+    promptSeed: {
+      type: "integer",
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+      description: "Independent wording seed; mixed selection requires it explicitly.",
+    },
     variant: {
       type: "string",
       enum: ["open", "rooms", "inside_out"],
@@ -152,7 +165,10 @@ const resultsSchema: JsonSchema = {
     destroyed: { type: "integer", minimum: 0, description: "Tiles razed all the way to rubble." },
     poolStart: { type: "number", description: "Board income pool at full claim, turn 1." },
     poolEnd: { type: "number", description: "The same pool at the end. The deadweight loss." },
-    replayUri: { type: "string", description: "Pointer to the saved replay artifact, if one was written." },
+    replayUri: {
+      type: "string",
+      description: "Pointer to the saved replay artifact, if one was written.",
+    },
   },
 };
 
@@ -225,7 +241,8 @@ const variants: Variant[] = [
   {
     id: "inside_out",
     name: "Inside Out (9 players)",
-    description: "All the wealth is central and shared; the rim is barren, so contact is immediate.",
+    description:
+      "All the wealth is central and shared; the rim is barren, so contact is immediate.",
     game_config: {
       players: PLACEHOLDER_PLAYERS,
       num_agents: SEATS,
@@ -446,7 +463,11 @@ export function buildTerritoryManifest(): CoworldManifest {
     docs: [
       { id: "rules.md", title: "Rules", content: { type: "text", value: RULES_DOC } },
       { id: "strategy.md", title: "Strategy", content: { type: "text", value: STRATEGY_DOC } },
-      { id: "deadweight.md", title: "What it measures", content: { type: "text", value: DEADWEIGHT_DOC } },
+      {
+        id: "deadweight.md",
+        title: "What it measures",
+        content: { type: "text", value: DEADWEIGHT_DOC },
+      },
     ],
     variants,
     certification: {
@@ -465,7 +486,8 @@ export function buildTerritoryManifest(): CoworldManifest {
         ...Array.from({ length: 4 }, () => ({ player_id: "territory-raider" })),
       ],
     },
-    schemaUrl: "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
+    schemaUrl:
+      "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
   });
 }
 

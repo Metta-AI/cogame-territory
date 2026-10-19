@@ -5,15 +5,16 @@ variant. At each turn it captures the production system prompt and rendered
 seat observation. The maintained homesteader and raider policies provide
 decisions accepted by the production parser and legality predicate. All nine
 seats choose against the same pre-turn state, then the pure simulator advances.
-Whole games stay in one split.
+The output is a private trajectory candidate stream. The shared Coworld importer
+owns split assignment and review; seed families span wording and board variants.
 
 ```sh
 pnpm install --frozen-lockfile
 node tools/test-posttrain.mjs
-pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open
+pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open mixed 17
 ```
 
-The other certified variants are `rooms` and `inside_out`. Ten games yielded
+The other certified variants are `rooms` and `inside_out`. The previous direct exporter yielded
 1,296 training and 324 validation decisions for `open`, 1,255 and 307 for
 `rooms`, and 1,296 and 324 for `inside_out`. The largest examples used 3,508,
 2,755, and 3,007 tokens with a local Qwen2.5 tokenizer, within 4,096 tokens.
@@ -21,17 +22,35 @@ One CPU optimizer step on a tiny local model reduced validation loss from
 5.5555 to 5.4672, 5.5526 to 5.4610, and 5.5555 to 5.4680, respectively.
 These short runs verify the training path, not policy quality.
 
-From a Metta checkout with `metta-posttrain` installed:
-
-```sh
-uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
-  --dataset /tmp/territory-data --output /tmp/territory-adapter \
-  --model Qwen/Qwen3-0.6B --max-steps 100 --max-length 4096
-```
+The current exporter requires a clean source commit and writes mode-0600
+`trajectories.jsonl` and `manifest.json`. Records identify teacher origin, source
+revision, prompt hashes, accepted actions, and complete outcomes. They require
+independent review before training admission and are not ready training datasets.
 
 The exporter uses the same anonymous aliases and redacted observation as
 the hosted player. Opponents' paint balances, pending orders, and private
 messages to other seats stay hidden.
+
+## Prompt selection
+
+`promptVariant` accepts `canonical`, `plain`, `numbered`, `questions`, `reordered`,
+`heldout-briefing`, `heldout-reference`, and `mixed`. The canonical default preserves
+the original instructions. Only the introductory wording changes; doctrine, rules,
+action schema, private observations, and timing budgets remain fixed.
+
+`mixed` requires an explicit nonnegative integer `promptSeed`, independent of the
+board seed. Its remainder modulo five selects one training wording for the episode.
+Held-out wordings are evaluation-only. The host sends selection in the welcome
+configuration; the ordinary player and text bridge use the same renderer.
+
+```sh
+pnpm build:training
+python3 tools/test-prompt-games.py "$PWD/dist-server/game/training-bridge.js"
+```
+
+Text-bridge reset accepts `variant`, `promptVariant`, `promptSeed`, and `split`
+(`train`, `validation`, or `test`). Training rejects held-out wording. Complete-game
+comparisons establish semantic preservation, not improved model learning stability.
 
 ## Numeric reinforcement learning
 
@@ -62,11 +81,11 @@ RTX 4090 reached 4,096 timesteps per variant, then reloaded each checkpoint
 for five held-out games at each seed. PufferLib computed the reported scores
 and pairwise performance from the engine's terminal results.
 
-| Variant | Seed 101 score / performance | Seed 102 score / performance |
-| --- | ---: | ---: |
-| `open` | 10.8 / 0.025 | 14.4 / 0.000 |
-| `rooms` | 14.4 / 0.000 | 14.4 / 0.000 |
-| `inside_out` | 140.6 / 0.550 | 171.0 / 0.763 |
+| Variant      | Seed 101 score / performance | Seed 102 score / performance |
+| ------------ | ---------------------------: | ---------------------------: |
+| `open`       |                 10.8 / 0.025 |                 14.4 / 0.000 |
+| `rooms`      |                 14.4 / 0.000 |                 14.4 / 0.000 |
+| `inside_out` |                140.6 / 0.550 |                171.0 / 0.763 |
 
 These short pilots prove checkpoint training and reload, not competitive
 policy quality.

@@ -7,6 +7,7 @@
 // nine fixed anonymous aliases.
 import { z } from "zod";
 import { BATCH_MIN_MS, MAX_TURNS, SEATS } from "../shared/engine/constants.js";
+import { promptVariantSchema } from "../game/prompt-selection.js";
 
 /** The fixed seat count of this coworld package. Nine, everywhere. */
 export const COWORLD_SEATS = SEATS;
@@ -23,6 +24,8 @@ export const coworldConfigSchema = z
     /** Present -> a reproducible board (the cert fixture pins one); absent -> a
      *  fresh random board each episode (the league default). */
     seed: z.number().int().optional(),
+    promptVariant: promptVariantSchema.optional(),
+    promptSeed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
     variant: z.enum(["open", "rooms", "inside_out"]).optional(),
     /** Floor on the spacing between batch starts. The cert fixture pins 0. */
     paceMs: z.number().int().nonnegative().optional(),
@@ -33,6 +36,7 @@ export const coworldConfigSchema = z
 
 export type CoworldConfig = z.infer<typeof coworldConfigSchema>;
 
-export const configVariant = (c: CoworldConfig): "open" | "rooms" | "inside_out" => c.variant ?? "open";
+export const configVariant = (c: CoworldConfig): "open" | "rooms" | "inside_out" =>
+  c.variant ?? "open";
 export const configTurns = (c: CoworldConfig): number => c.turns ?? MAX_TURNS;
 export const configPaceMs = (c: CoworldConfig): number => c.paceMs ?? BATCH_MIN_MS;

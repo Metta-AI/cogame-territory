@@ -24,6 +24,7 @@ import type { TerritoryDecision, TerritorySeamState, TerritoryView } from "./gam
 import type { TerritoryObservation } from "./redact.js";
 import { renderPlayerMessages } from "./prompt.js";
 import { scriptedDecide } from "./scripted.js";
+import { promptSelectionSchema } from "./prompt-selection.js";
 
 type Ctx = PlayerDecideContext<TerritorySeamState, TerritoryDecision, TerritoryView>;
 
@@ -53,7 +54,8 @@ export function makeLlmDecide(
   });
   return async (ctx) => {
     const view = ctx.view as TerritoryObservation;
-    const messages = renderPlayerMessages(view, doctrine, ctx.reason);
+    const selection = promptSelectionSchema.parse(ctx.config);
+    const messages = renderPlayerMessages(view, doctrine, ctx.reason, selection);
     let usedFallback = true;
     const decision = await robustDecide<TerritoryDecision>({
       client,

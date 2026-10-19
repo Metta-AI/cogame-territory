@@ -15,6 +15,7 @@ import {
   TRANSFER_FEE,
 } from "../shared/engine/constants.js";
 import type { TerritoryObservation } from "./redact.js";
+import { INTRODUCTIONS, selectedVariant, type PromptSelection } from "./prompt-selection.js";
 
 /** Direct JSON submission contract; parsed by SubmissionSchema. */
 export const SUBMISSION_JSON_SCHEMA = {
@@ -147,10 +148,11 @@ A WORKED TURN
     "note": "cheap rich wall, open with a border offer" }`;
 
 /** The full system prompt for a doctrine. The doctrine block is appended last. */
-export function systemPrompt(doctrine: string): string {
+export function systemPrompt(doctrine: string, selection: PromptSelection): string {
+  const rules = INTRODUCTIONS[selectedVariant(selection)] + RULES.slice(RULES.indexOf("\n"));
   const trimmed = doctrine.trim();
-  if (!trimmed) return RULES;
-  return `${RULES}\n\n--- YOUR DOCTRINE ---\n${trimmed}\n--- END DOCTRINE ---`;
+  if (!trimmed) return rules;
+  return `${rules}\n\n--- YOUR DOCTRINE ---\n${trimmed}\n--- END DOCTRINE ---`;
 }
 
 /** The rules copy alone, for tests and the manifest docs. */
@@ -251,6 +253,7 @@ export function renderPlayerMessages(
   view: TerritoryObservation,
   doctrine: string,
   reason: string | null,
+  selection: PromptSelection,
 ) {
   const host = reason
     ? `\n\nThe game rejected your previous move: ${reason}. Choose a different legal move.`
@@ -259,7 +262,7 @@ export function renderPlayerMessages(
     {
       role: "system" as const,
       content:
-        systemPrompt(doctrine) +
+        systemPrompt(doctrine, selection) +
         `\nReturn JSON matching this schema: ${JSON.stringify(SUBMISSION_JSON_SCHEMA)}`,
     },
     { role: "user" as const, content: renderObservation(view) + host },

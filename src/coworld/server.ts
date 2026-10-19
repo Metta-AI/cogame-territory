@@ -20,6 +20,7 @@ import { runCoworldHost, runCoworldReplay as runReplayHost, findConsoleDir } fro
 import type { CoworldClient, CoworldHostHandle, ReplayServerHandle } from "@cogweb/coworld";
 
 import { territoryModule } from "../game/game.js";
+import { promptSelectionSchema, selectionMetadata } from "../game/prompt-selection.js";
 import type { TerritoryDecision, TerritorySeamState } from "../game/game.js";
 import {
   ACT_TIMEOUT_MS,
@@ -54,6 +55,7 @@ export function runCoworldGame(opts: CoworldGameOptions): Promise<CoworldGameHan
   const { config } = opts;
   const variant = configVariant(config);
   const turns = configTurns(config);
+  const selection = promptSelectionSchema.parse(config);
   return runCoworldHost<TerritorySeamState, TerritoryDecision, TerritoryResults>({
     module: territoryModule,
     tokens: config.tokens,
@@ -72,6 +74,7 @@ export function runCoworldGame(opts: CoworldGameOptions): Promise<CoworldGameHan
       episodeDeadlineMs: EPISODE_DEADLINE_MS,
     },
     welcomeConfig: () => ({
+      ...selection,
       seats: SEATS,
       turns,
       variant,
@@ -94,6 +97,7 @@ export function runCoworldGame(opts: CoworldGameOptions): Promise<CoworldGameHan
         player: null,
       })),
       config: {
+        prompt_configuration: selectionMetadata(selection),
         seats: SEATS,
         turns,
         variant,
