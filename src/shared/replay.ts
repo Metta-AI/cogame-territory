@@ -39,6 +39,16 @@ export const ReplayConfig = z
     razeOpensTurn: z.number().int(),
     flingRange: z.number().int(),
     salvageMult: z.number().int(),
+    // Archived replays predate prompt selection metadata.
+    prompt_configuration: z
+      .object({
+        bank: z.string(),
+        variant: z.string(),
+        selection: z.string(),
+        seed: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type ReplayConfig = z.infer<typeof ReplayConfig>;

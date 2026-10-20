@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,7 +80,10 @@ it("completes the real nine-seat production loop with exact private attempts and
     expect(trajectory.decisions).toHaveLength(162);
     expect(calls).toHaveLength(164);
     const byId = new Map(calls.map((call) => [call.id, call]));
-    const bridge = new TrainingSession("7", 9, "private doctrine");
+    const bridge = new TrainingSession("7", 9, "private doctrine", {
+      promptVariant: "canonical",
+      promptSeed: 0,
+    });
     for (const decision of trajectory.decisions) {
       expect(decision.visibility).toBe("private");
       expect(decision.action_status).toBe("accepted");
@@ -94,7 +97,18 @@ it("completes the real nine-seat production loop with exact private attempts and
         expect(attempt.prompt).toEqual(attempt.request.messages);
         const observation = bridge.observation();
         if (observation.kind !== "decision") throw new Error("Bridge ended before hosted loop");
-        expect(observation.semantic_view).toEqual(decision.observation);
+        const { prompt_template, ...view } = observation.semantic_view;
+        expect(view).toEqual(decision.observation);
+        expect(prompt_template).toEqual({
+          bank: "territory-rules-v3",
+          variant: "canonical",
+          selection: "canonical",
+          seed: 0,
+          system_sha256: createHash("sha256")
+            .update(observation.messages[0]!.content)
+            .digest("hex"),
+          user_sha256: createHash("sha256").update(observation.messages[1]!.content).digest("hex"),
+        });
         expect(observation.messages).toEqual(attempt.prompt);
         const applied = bridge.step(observation.decision_id, attempt.response);
         expect(applied.kind).toBe(attempt.accepted ? "accepted" : "rejected");
@@ -127,7 +141,10 @@ it("completes the real nine-seat production loop with exact private attempts and
 }, 60000);
 
 it("consumes exhausted parser and engine retries with explicit engine fallbacks", () => {
-  const parser = new TrainingSession("7", 9, "doctrine");
+  const parser = new TrainingSession("7", 9, "doctrine", {
+    promptVariant: "canonical",
+    promptSeed: 0,
+  });
   expect(parser.step(0, "not JSON").kind).toBe("rejected");
   const consumed = parser.step(0, "not JSON");
   expect(consumed.kind).toBe("consumed_rejection");
@@ -136,7 +153,10 @@ it("consumes exhausted parser and engine retries with explicit engine fallbacks"
     expect(consumed.observation.kind).toBe("decision");
     if (consumed.observation.kind === "decision") expect(consumed.observation.decision_id).toBe(1);
   }
-  const engine = new TrainingSession("7", 9, "doctrine");
+  const engine = new TrainingSession("7", 9, "doctrine", {
+    promptVariant: "canonical",
+    promptSeed: 0,
+  });
   const invalid = '{"orders":[{"type":"claim","tile":"999,999"}]}';
   expect(engine.step(0, invalid).kind).toBe("rejected");
   expect(engine.step(0, invalid).kind).toBe("consumed_rejection");

@@ -9,7 +9,14 @@ import { rejectionReason } from "../src/shared/engine/resolve.js";
 import type { Submission } from "../src/shared/engine/orders.js";
 import { observe, type TerritoryObservation } from "../src/game/redact.js";
 import { scriptedDecide } from "../src/game/scripted.js";
-import { SYSTEM_PROMPT, renderObservation } from "../src/game/prompt.js";
+import { systemPrompt, renderObservation } from "../src/game/prompt.js";
+import {
+  promptSelectionSchema,
+  selectedVariant,
+  type PromptSelection,
+} from "../src/game/prompt-selection.js";
+import { promptMetadata } from "../src/game/prompt-evidence.js";
+import { z } from "zod";
 
 const [manifestPath, variantArg] = process.argv.slice(2);
 if (!manifestPath || !variantArg) throw new Error("usage: node train-bridge.mjs MANIFEST VARIANT");
@@ -26,6 +33,7 @@ class Bridge {
   submissions: Record<number, Submission> = {};
   decisionId = 0;
   seed = 0;
+  selection: PromptSelection = promptSelectionSchema.parse({});
   catalogCache: Array<Submission | null> | null = null;
 
   get seat(): number {
@@ -57,24 +65,36 @@ class Bridge {
       }
     }
     this.catalogCache = choices.map((choice) =>
-      rejectionReason(this.state, this.seat, choice.orders) === null ? choice : null);
+      rejectionReason(this.state, this.seat, choice.orders) === null ? choice : null,
+    );
     return this.catalogCache;
   }
 
   current(): object {
     const view = this.view;
+    const system = systemPrompt("", this.selection);
+    const user = renderObservation(view);
     return {
-      kind: "decision", game: "territory", decision_id: this.decisionId,
-      seat: this.seat, engine_seat: this.seat, turn: this.state.turn,
-      semantic_view: view, inbox: [],
+      kind: "decision",
+      game: "territory",
+      decision_id: this.decisionId,
+      seat: this.seat,
+      engine_seat: this.seat,
+      turn: this.state.turn,
+      semantic_view: { ...view, prompt_template: promptMetadata(this.selection, system, user) },
+      inbox: [],
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: renderObservation(view) },
+        { role: "system", content: system },
+        { role: "user", content: user },
       ],
       speech_messages: [],
-      action_schema: { type: "object", properties: {
-        choice: { type: "integer", minimum: 0, maximum: this.catalog().length - 1 },
-      }, required: ["choice"] },
+      action_schema: {
+        type: "object",
+        properties: {
+          choice: { type: "integer", minimum: 0, maximum: this.catalog().length - 1 },
+        },
+        required: ["choice"],
+      },
       typed_question: null,
     };
   }
@@ -85,26 +105,48 @@ class Bridge {
     for (const name of ["open", "rooms", "inside_out"]) values.push(Number(variant === name));
     for (let seat = 0; seat < 9; seat++) values.push(Number(this.seat === seat));
     values.push(view.turn / view.turns);
-    values.push(view.you.paint / 100, view.you.walls / 169,
-      view.you.incomeLastTurn / 100, view.you.banked / 1000,
-      Number(view.you.state !== "eliminated"));
+    values.push(
+      view.you.paint / 100,
+      view.you.walls / 169,
+      view.you.incomeLastTurn / 100,
+      view.you.banked / 1000,
+      Number(view.you.state !== "eliminated"),
+    );
     for (const cog of view.cogs) {
-      values.push(cog.walls / 169, cog.incomeLastTurn / 100,
-        cog.banked / 1000, cog.razesMade / 169, Number(cog.alive));
+      values.push(
+        cog.walls / 169,
+        cog.incomeLastTurn / 100,
+        cog.banked / 1000,
+        cog.razesMade / 169,
+        Number(cog.alive),
+      );
     }
     const alias = new Map(view.cogs.map((cog) => [cog.alias, cog.seat + 1]));
     for (const tile of view.tiles) {
-      values.push(["wall", "cracked", "rubble"].indexOf(tile.state) / 2,
-        tile.yield / 3, (alias.get(tile.owner ?? "") ?? 0) / 9,
-        Number(tile.wet), (alias.get(tile.hearthOf ?? "") ?? 0) / 9);
+      values.push(
+        ["wall", "cracked", "rubble"].indexOf(tile.state) / 2,
+        tile.yield / 3,
+        (alias.get(tile.owner ?? "") ?? 0) / 9,
+        Number(tile.wet),
+        (alias.get(tile.hearthOf ?? "") ?? 0) / 9,
+      );
     }
     if (values.length !== 908) throw new Error(`numeric view changed: ${values.length}`);
-    return { decision_id: this.decisionId, values,
-      actions: this.catalog().map((choice, index) => choice === null ? null : { choice: index }) };
+    return {
+      decision_id: this.decisionId,
+      values,
+      actions: this.catalog().map((choice, index) => (choice === null ? null : { choice: index })),
+    };
   }
 
   reset(request: { seed: string; players: number }): object {
     if (request.players !== 9) throw new Error("Territory requires nine seats");
+    this.selection = promptSelectionSchema.parse(request);
+    const { split } = z
+      .object({ split: z.enum(["train", "validation", "test"]).default("train") })
+      .parse(request);
+    if (split === "train" && selectedVariant(this.selection).startsWith("heldout-"))
+      throw new Error("held-out wording cannot enter training");
     let hash = 2166136261;
     for (const char of request.seed) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
     this.seed = hash >>> 0;
@@ -135,10 +177,15 @@ class Bridge {
     if (this.pending.length === 0) {
       this.state = stepTurn(this.state, this.submissions);
       this.submissions = {};
-      this.pending = this.state.cogOrder.filter((seat) => this.state.cogs[seat]!.life !== "eliminated");
+      this.pending = this.state.cogOrder.filter(
+        (seat) => this.state.cogs[seat]!.life !== "eliminated",
+      );
     }
     const observation = isFinished(this.state)
-      ? { kind: "terminal", scores: Object.fromEntries(scoreGame(this.state).map((score, seat) => [seat, score])) }
+      ? {
+          kind: "terminal",
+          scores: Object.fromEntries(scoreGame(this.state).map((score, seat) => [seat, score])),
+        }
       : this.current();
     return { kind: "accepted", action, observation };
   }
@@ -146,11 +193,24 @@ class Bridge {
 
 const bridge = new Bridge();
 for await (const line of createInterface({ input: process.stdin })) {
-  const request = JSON.parse(line) as { kind: string; seed: string; players: number; decision_id: number; response: string };
-  const response = request.kind === "reset" ? bridge.reset(request)
-    : request.kind === "encode" ? bridge.encode()
-    : request.kind === "teacher" ? bridge.teacher()
-    : request.kind === "step" ? bridge.step(request)
-    : (() => { throw new Error(`unknown command: ${request.kind}`); })();
+  const request = JSON.parse(line) as {
+    kind: string;
+    seed: string;
+    players: number;
+    decision_id: number;
+    response: string;
+  };
+  const response =
+    request.kind === "reset"
+      ? bridge.reset(request)
+      : request.kind === "encode"
+        ? bridge.encode()
+        : request.kind === "teacher"
+          ? bridge.teacher()
+          : request.kind === "step"
+            ? bridge.step(request)
+            : (() => {
+                throw new Error(`unknown command: ${request.kind}`);
+              })();
   process.stdout.write(`${JSON.stringify(response)}\n`);
 }

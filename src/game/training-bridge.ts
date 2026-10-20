@@ -10,6 +10,13 @@ import { scriptedDecide } from "./scripted.js";
 import type { TerritoryObservation } from "./redact.js";
 import { SubmissionSchema, type Submission } from "../shared/engine/orders.js";
 import { rejectionReason } from "../shared/engine/resolve.js";
+import {
+  promptSelectionSchema,
+  promptVariantSchema,
+  selectedVariant,
+  type PromptSelection,
+} from "./prompt-selection.js";
+import { promptMetadata } from "./prompt-evidence.js";
 
 /** Uses the ordinary production renderer, parser, legality gate and engine. */
 export class TrainingSession {
@@ -23,12 +30,15 @@ export class TrainingSession {
     seed: string,
     players: number,
     private readonly doctrine: string,
+    private readonly selection: PromptSelection,
+    variant: "open" | "rooms" | "inside_out" = "open",
   ) {
     if (players !== 9) throw new Error("Territory requires nine players");
     this.state = territoryGame.newGame({
       seed,
       playerCount: players,
       seatNames: Array.from({ length: players }, (_, seat) => `seat ${seat}`),
+      rules: { variant },
     });
   }
   observation() {
@@ -36,6 +46,12 @@ export class TrainingSession {
       return { kind: "terminal" as const, scores: territoryGame.score(this.state) };
     const seat = territoryGame.pendingActors(this.state)[0]!;
     const view = territoryGame.redact(this.state, seat) as TerritoryObservation;
+    const messages = renderPlayerMessages(view, this.doctrine, this.reason, this.selection).map(
+      (message) =>
+        message.role === "user" && this.parseReason
+          ? { ...message, content: message.content + `\n\n${this.parseReason}` }
+          : message,
+    );
     return {
       kind: "decision" as const,
       game: "territory",
@@ -44,13 +60,12 @@ export class TrainingSession {
       engine_seat: seat,
       turn: territoryGame.turnOf(this.state),
       inference_mode: "text_action" as const,
-      semantic_view: view,
+      semantic_view: {
+        ...view,
+        prompt_template: promptMetadata(this.selection, messages[0]!.content, messages[1]!.content),
+      },
       inbox: [],
-      messages: renderPlayerMessages(view, this.doctrine, this.reason).map((message) =>
-        message.role === "user" && this.parseReason
-          ? { ...message, content: message.content + `\n\n${this.parseReason}` }
-          : message,
-      ),
+      messages,
       speech_messages: [],
       action_schema: SUBMISSION_JSON_SCHEMA,
       typed_question: null,
@@ -121,6 +136,10 @@ const Command = z.discriminatedUnion("kind", [
     seed: z.string(),
     players: z.number().int(),
     doctrine: z.string().default(""),
+    variant: z.enum(["open", "rooms", "inside_out"]).default("open"),
+    promptVariant: promptVariantSchema.default("canonical"),
+    promptSeed: z.number().int().nonnegative().optional(),
+    split: z.enum(["train", "validation", "test"]).default("train"),
   }),
   z.object({ kind: z.literal("teacher") }),
   z.object({ kind: z.literal("step"), decision_id: z.number().int(), response: z.string() }),
@@ -129,8 +148,18 @@ export async function runTrainingBridge(): Promise<void> {
   let session: TrainingSession | undefined;
   for await (const line of createInterface({ input: process.stdin })) {
     const command = Command.parse(JSON.parse(line));
-    if (command.kind === "reset")
-      session = new TrainingSession(command.seed, command.players, command.doctrine);
+    if (command.kind === "reset") {
+      const selection = promptSelectionSchema.parse(command);
+      if (command.split === "train" && selectedVariant(selection).startsWith("heldout-"))
+        throw new Error("held-out wording cannot enter training");
+      session = new TrainingSession(
+        command.seed,
+        command.players,
+        command.doctrine,
+        selection,
+        command.variant,
+      );
+    }
     if (!session) throw new Error("reset required");
     const response =
       command.kind === "reset"

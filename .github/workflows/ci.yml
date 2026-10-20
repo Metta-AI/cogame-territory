@@ -77,6 +77,11 @@ jobs:
           pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
           python3 tools/test-train-bridge.py /tmp/territory-train-bridge.mjs
 
+      - name: Exercise episode-stable text prompts
+        run: |
+          pnpm build:training
+          python3 tools/test-prompt-games.py dist-server/game/training-bridge.js
+
       - name: Build (web bundle + the self-contained server bundles)
         run: pnpm build
 

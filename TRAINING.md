@@ -1,37 +1,39 @@
-# Territory post-training
+# Territory prompt diversity and training
 
-`tools/export-posttrain.ts` plays ten complete native games per certified
-variant. At each turn it captures the production system prompt and rendered
-seat observation. The maintained homesteader and raider policies provide
-decisions accepted by the production parser and legality predicate. All nine
-seats choose against the same pre-turn state, then the pure simulator advances.
-Whole games stay in one split.
+The v3 bank retains the original canonical rules and provides five training
+presentations: `canonical`, `plain`, `numbered`, `questions`, and `reordered`.
+Alternate presentations paraphrase board, economy, orders, survival, simultaneous
+resolution, scoring, and budgets. Each has independently written sections,
+with different order and headings.
+The reply contract, worked example, doctrine, and strategy guidance remain fixed.
+
+`mixed` requires an independent nonnegative `promptSeed`, choosing one training
+presentation once per episode. `heldout-briefing` and `heldout-reference` are
+reserved for evaluation. Collection rejects held-out wording for training;
+use `split: "validation"` or `split: "test"` for held-out bridge resets.
+
+## Complete-game exports
 
 ```sh
-pnpm install --frozen-lockfile
+pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open mixed 0
 node tools/test-posttrain.mjs
-pnpm exec tsx tools/export-posttrain.ts /tmp/territory-data 10 open
 ```
 
-The other certified variants are `rooms` and `inside_out`. Ten games yielded
-1,296 training and 324 validation decisions for `open`, 1,255 and 307 for
-`rooms`, and 1,296 and 324 for `inside_out`. The largest examples used 3,508,
-2,755, and 3,007 tokens with a local Qwen2.5 tokenizer, within 4,096 tokens.
-One CPU optimizer step on a tiny local model reduced validation loss from
-5.5555 to 5.4672, 5.5526 to 5.4610, and 5.5555 to 5.4680, respectively.
-These short runs verify the training path, not policy quality.
+The native exporter runs the certified 18-turn, nine-seat game with the
+homesteader and raider teachers. All submissions are validated before the
+simultaneous turn resolves. Exports contain `train.jsonl`, `validation.jsonl`,
+and `manifest.json`. Every fifth seed belongs to validation; mixed wording
+cycles separately within each split. Scenario families identify a variant
+and seed. Episode IDs also include the selected wording and prompt seed, so
+matched exports remain distinct without changing their scenario families.
+Exact message hashes accompany every exported decision.
+Existing output directories are rejected. Opponents' balances and pending
+orders remain private.
 
-From a Metta checkout with `metta-posttrain` installed:
-
-```sh
-uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
-  --dataset /tmp/territory-data --output /tmp/territory-adapter \
-  --model Qwen/Qwen3-0.6B --max-steps 100 --max-length 4096
-```
-
-The exporter uses the same anonymous aliases and redacted observation as
-the hosted player. Opponents' paint balances, pending orders, and private
-messages to other seats stay hidden.
+Complete-game wording comparisons check mechanics and provenance, not learned
+robustness. Learning comparisons must match policies, game seeds, and inference
+settings, report failures and fallbacks, and reserve held-out presentations
+until training choices are frozen.
 
 ## Numeric reinforcement learning
 
@@ -42,6 +44,9 @@ and four transfer amounts for each other seat. The production legality
 predicate masks unavailable choices. All living seats choose against one
 pre-turn state, then the production simulator advances. The full hosted
 observation remains in `semantic_view` and `messages`.
+Reset accepts the same `promptVariant`, `promptSeed`, and `split` fields as
+the text bridge. Exact message hashes appear in `semantic_view.prompt_template`;
+prompt selection does not change the 908 numeric features or action catalog.
 
 ```sh
 pnpm exec esbuild tools/train-bridge.ts --bundle --platform=node --format=esm --target=node22 --outfile=/tmp/territory-train-bridge.mjs
@@ -62,11 +67,11 @@ RTX 4090 reached 4,096 timesteps per variant, then reloaded each checkpoint
 for five held-out games at each seed. PufferLib computed the reported scores
 and pairwise performance from the engine's terminal results.
 
-| Variant | Seed 101 score / performance | Seed 102 score / performance |
-| --- | ---: | ---: |
-| `open` | 10.8 / 0.025 | 14.4 / 0.000 |
-| `rooms` | 14.4 / 0.000 | 14.4 / 0.000 |
-| `inside_out` | 140.6 / 0.550 | 171.0 / 0.763 |
+| Variant      | Seed 101 score / performance | Seed 102 score / performance |
+| ------------ | ---------------------------: | ---------------------------: |
+| `open`       |                 10.8 / 0.025 |                 14.4 / 0.000 |
+| `rooms`      |                 14.4 / 0.000 |                 14.4 / 0.000 |
+| `inside_out` |                140.6 / 0.550 |                171.0 / 0.763 |
 
 These short pilots prove checkpoint training and reload, not competitive
 policy quality.

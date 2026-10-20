@@ -1,4 +1,4 @@
-// Export complete native Territory games as hosted tool conversations.
+// Export complete native Territory games with the hosted JSON reply contract.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -10,12 +10,18 @@ import { SubmissionSchema, type Submission } from "../src/shared/engine/orders.j
 import { rejectionReason } from "../src/shared/engine/resolve.js";
 import { observe } from "../src/game/redact.js";
 import { scriptedDecide } from "../src/game/scripted.js";
-import { SYSTEM_PROMPT, renderObservation } from "../src/game/prompt.js";
+import { systemPrompt, renderObservation } from "../src/game/prompt.js";
 
-const [outputArg, episodesArg, variantArg] = process.argv.slice(2);
+import { promptSelectionSchema, selectedVariant } from "../src/game/prompt-selection.js";
+import { promptMetadata } from "../src/game/prompt-evidence.js";
+
+const [outputArg, episodesArg, variantArg, wordingArg = "canonical", promptSeedArg = "0"] = process.argv.slice(2);
 if (!outputArg || !episodesArg || !variantArg) {
-  throw new Error("usage: tsx tools/export-posttrain.ts OUTPUT EPISODES VARIANT");
+  throw new Error("usage: tsx tools/export-posttrain.ts OUTPUT EPISODES VARIANT [PROMPT_VARIANT] [PROMPT_SEED]");
 }
+const configured = promptSelectionSchema.parse({ promptVariant: wordingArg, promptSeed: Number(promptSeedArg) });
+if (selectedVariant(configured).startsWith("heldout-")) throw new Error("held-out wording cannot enter training sources");
+const wordingCounts = { train: 0, validation: 0 };
 const output = resolve(outputArg);
 const episodes = Number(episodesArg);
 if (!Number.isInteger(episodes) || episodes < 10) throw new Error("at least ten games are required");
@@ -33,6 +39,11 @@ const validationRows: string[] = [];
 const runs: Array<{ seed: number; turns: number; decisions: number; scores: number[]; reason: string | null }> = [];
 
 for (let seed = 1; seed <= episodes; seed++) {
+  const split = seed % 5 === 0 ? "validation" : "train";
+  const selection = {
+    ...configured,
+    promptSeed: configured.promptSeed + (configured.promptVariant === "mixed" ? wordingCounts[split]++ : 0),
+  };
   let state: GameState = newGame(seed, variant, config.turns);
   const rows: string[] = [];
   while (!isFinished(state)) {
@@ -45,13 +56,17 @@ for (let seed = 1; seed <= episodes; seed++) {
       if (rejectionReason(state, seat, decision.orders) !== null) {
         throw new Error(`scripted decision rejected at seed ${seed}, turn ${state.turn}, seat ${seat}`);
       }
+      const system = systemPrompt("", selection);
+      const user = renderObservation(view);
       rows.push(JSON.stringify({
-        episode_id: `territory-${variant}-${seed}`,
+        episode_id: `territory-${variant}-${seed}-${selectedVariant(selection)}-${selection.promptSeed}`,
         seed: `territory-${variant}-${seed}`,
+        scenario_family: `territory-${variant}-${seed}`,
+        prompt_template: promptMetadata(selection, system, user),
         decision_id: rows.length,
         prompt: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: renderObservation(view) },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
         completion: [{ role: "assistant", content: JSON.stringify(decision) }],
         game: "territory", action_schema_revision: "territory-submit-v1",
