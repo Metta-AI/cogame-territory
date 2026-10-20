@@ -178,6 +178,74 @@ Break-even on cashing out a tile you hold is turn 14: before then holding is wor
   budget: `Use only paint already stored to fund orders. Income, salvage, and received transfers become spendable next turn. Any illegal or unaffordable entry invalidates the whole set. After one retry explaining the rejection, failure becomes a hold. Choose claim and raze tiles from reach and razeReach respectively.`,
 };
 
+const NUMBERED_SECTIONS: Record<keyof typeof PRESENTATION_SECTIONS, string> = {
+  board: `Locate tiles by axial "q,r" coordinates on a pointy-top hex board: radius 7, 169 tiles. Wall becomes cracked wall, then rubble; neither transition can be reversed. Base yields run from 0 through 3. Effective yield equals base yield on a wall, floor(base yield/2) on a cracked wall, and zero on rubble. A wall yielding zero still supplies territory and a projection origin. Each permanent hearth sits on ring 5. Its coordinate and up to six neighbours make the seven-coordinate home ring; losses here can be fatal.`,
+  money: `Begin with 12 paint and no other resource. For each dry tile you own, receive effective yield times ${TICKS_PER_TURN} times ${INCOME_PER_TICK_PER_YIELD} per turn: one paint per yield. A fresh claim stays wet and earns nothing during its acquisition turn. Upkeep dries it, so income starts the following turn. Nobody may claim it again; dry ownership can only be stripped by razing. Entering another Cog's territory therefore destroys value permanently.`,
+  orders: `Pay for orders even when they fail to achieve their intent.
+Claim: target an unowned wall or cracked wall no farther than ${FLING_RANGE} from your nearest owned tile. With no ownership, measure from your hearth. Spend ${CLAIM_BASE} + ${CLAIM_PER_DIST} times that distance (4 at distance 1; 6 at distance 2).
+Raze: use the same distance limit, starting on turn ${RAZE_OPEN_TURN}. Spend ${RAZE_COST}, increased to ${RAZE_HOME_COST} within distance 1 of another living Cog's hearth. The first hit removes a wall's owner and halves its yield permanently for everyone. The next hit leaves rubble: unclaimable, producing nothing, conducting no adjacency and projecting no reach. First razing your own wall returns ${SALVAGE_MULT} times effective yield as salvage next turn.
+Transfer: specify another living Cog's alias and an amount. Spend that amount plus ${TRANSFER_FEE}; the recipient gets spendable paint next turn.`,
+  survival: `Check ownership at turn start when counting strikes. An enemy raze against your owned home-ring tile strikes you; a self-raze does not. A steady Cog struck this turn becomes publicly staggered. Being struck again on the immediately next turn eliminates it, clears its ownership, empties its paint and fixes its final score. Survive that next turn without a strike to become steady again.
+The counter to a siege is to raze the attacker's nearest foothold: with nothing owned within 2 of your home ring, its second strike cannot land.`,
+  simultaneous: `Submit together with the other eight Cogs, using the same board snapshot. Process razes first; two hits on one tile in a turn destroy it completely. Then process claims. Competing claims on a free tile smear it, awarding ownership to nobody but charging both Cogs. Negotiated borders are worth negotiating. A claim invalidated by newly created rubble also consumes its paint.`,
+  score: `Maximize cumulative earnings: income plus salvage. This score only rises, then stops at elimination. Paying paint does not subtract points. Aggression instead sacrifices future income, both yours and the board's.
+Break-even on cashing out a tile you hold is turn 14: before then holding is worth more; after then salvage is.`,
+  budget: `Fund this turn entirely from stored paint. Received transfers, salvage and income fund later turns. A single illegal or unaffordable order rejects every order in the set. One retry includes the rejection reason; another failure becomes a hold. Use reach for claims and razeReach for razes.`,
+};
+
+const QUESTION_SECTIONS: Record<keyof typeof PRESENTATION_SECTIONS, string> = {
+  board: `You occupy a pointy-top axial hex lattice containing 169 tiles inside radius 7. Identify a tile as "q,r". It can deteriorate from wall to cracked wall to rubble, never recover. A base yield of 0..3 becomes effective yield unchanged for a wall, rounded down after halving for a cracked wall, or zero for rubble. Even a zero-yield wall gives territory and a projection origin. Your permanent hearth lies on ring 5; together with up to six neighbours it defines a seven-coordinate home ring. Losing owned ground there puts your life at risk.`,
+  money: `Your initial balance is 12 paint, the game's only resource. Dry tiles you own earn their total effective yield every turn (${TICKS_PER_TURN} ticks at ${INCOME_PER_TICK_PER_YIELD} paint per yield per tick). Why not count a new claim immediately? It is wet until Upkeep and earns nothing that turn. It starts earning next turn and cannot be claimed by anyone else. Razes alone remove dry ownership, so taking rival territory requires irreversible damage.`,
+  orders: `You can claim, raze or transfer; unsuccessful orders still cost paint.
+For a claim, is the target unowned wall or cracked wall and within ${FLING_RANGE} of your nearest owned tile? If you own none, your hearth supplies the origin. The charge is ${CLAIM_BASE} + distance times ${CLAIM_PER_DIST}, giving 4 at distance 1 and 6 at distance 2.
+For a raze, has turn ${RAZE_OPEN_TURN} arrived and is the target in the same reach? Pay ${RAZE_COST}, or ${RAZE_HOME_COST} if it is within distance 1 of another living Cog's hearth. A first raze strips the claim and cracks the wall, halving yield forever for all Cogs. A second creates rubble with no yield, no claimability, no adjacency conduction and no reach projection. First razing your own wall yields ${SALVAGE_MULT} times effective yield in salvage, usable next turn.
+For a transfer, name another living Cog by alias. An amount costs you that amount plus ${TRANSFER_FEE}; the recipient may spend it next turn.`,
+  survival: `Did another Cog raze a home-ring tile you owned when the turn began? That is a strike. Your own razes cannot strike you. A strike makes a steady Cog publicly staggered; another on the very next turn eliminates it. Elimination releases all claims, sets paint to zero and freezes score. A turn without a strike instead clears staggered back to steady.
+The counter to a siege is to raze the attacker's nearest foothold: with nothing owned within 2 of your home ring, its second strike cannot land.`,
+  simultaneous: `No Cog gets to act on another's updated board: all nine decide simultaneously. Razes happen before claims; two razes on the same tile in one turn destroy it outright. What if two Cogs claim the same free tile? It smears: both pay, neither owns it. Negotiated borders are worth negotiating. What if a raze turns your claim target into rubble? Your claim is void but still paid.`,
+  score: `How much paint have you earned as income and salvage? That total is your score; larger is better. It never decreases and freezes when you are eliminated. Spending itself does not reduce it, though aggression gives up future income for you and everyone sharing the board.
+Break-even on cashing out a tile you hold is turn 14: before then holding is worth more; after then salvage is.`,
+  budget: `Can stored paint cover every order now? You cannot count this turn's income, salvage or incoming transfers until next turn. If any order is illegal or unaffordable, the whole set is rejected. You get one explanation and retry, then hold if it still fails. Choose claim targets from reach and raze targets from razeReach.`,
+};
+
+const REORDERED_SECTIONS: Record<keyof typeof PRESENTATION_SECTIONS, string> = {
+  board: `Addresses "q,r" refer to pointy-top axial hexes. The radius-7 lattice has 169 tiles, each following the one-way sequence wall -> cracked wall -> rubble. For base yield 0..3, effective yield is respectively the full amount, floor(amount/2), or zero. Zero-yield walls remain useful territory and projection origins. A permanent hearth on ring 5 anchors each Cog's home ring: its own coordinate plus up to six adjacent ones, seven coordinates whose loss can kill the Cog.`,
+  money: `Income comes from dry ownership; sum those tiles' effective yields each turn. The tick calculation is ${TICKS_PER_TURN} times ${INCOME_PER_TICK_PER_YIELD} paint per yield, giving one paint per yield per turn. You start with 12 paint and have no second resource. Ownership acquired this turn is wet, yields nothing immediately, and dries in Upkeep. It yields from the following turn and blocks further claims. Removing dry ownership requires a raze, so rival territory cannot be entered without irreversible destruction.`,
+  orders: `Transfers send paint to another living Cog identified by alias: debit amount + ${TRANSFER_FEE}, and credit spendable funds next turn.
+Razes open on turn ${RAZE_OPEN_TURN}. Their reach is ${FLING_RANGE} from your nearest owned tile, falling back to your hearth when you own nothing. They cost ${RAZE_COST}, except within 1 of another living Cog's hearth, where they cost ${RAZE_HOME_COST}. Wall -> cracked removes ownership and halves yield permanently for everyone; cracked -> rubble removes all yield, claimability, adjacency conduction and reach projection. A first raze on your own wall salvages ${SALVAGE_MULT} times effective yield for next turn.
+Claims use that same reach, but require an unowned wall or cracked wall. Their cost is ${CLAIM_BASE} + ${CLAIM_PER_DIST} times distance, or 4 at distance 1 and 6 at distance 2. Every order is charged even if it fails.`,
+  survival: `Protect tiles you own in your home ring at turn start: an enemy raze there counts as a strike. Self-razes never count. Public life state moves from steady to staggered after a strike. A quiet next turn restores steady; a strike on that immediately next turn eliminates you instead. Elimination leaves your claims unowned, your paint zero and your score frozen.
+The counter to a siege is to raze the attacker's nearest foothold: with nothing owned within 2 of your home ring, its second strike cannot land.`,
+  simultaneous: `The board stays the same for all nine simultaneous decisions. Resolution applies razes before claims, so two same-turn razes fully destroy a tile. A claim aimed at resulting rubble becomes void while still costing paint. If two Cogs claim one free tile, a smear leaves both without ownership and both paying in full. Negotiated borders are worth negotiating.`,
+  score: `Earnings, rather than current savings, determine rank: maximize income + salvage accumulated over the game. Score cannot fall and is fixed at elimination. Paint spent never directly subtracts score; aggression consumes potential future income for you and the board.
+Break-even on cashing out a tile you hold is turn 14: before then holding is worth more; after then salvage is.`,
+  budget: `Before resolution, check all costs against paint already stored. New salvage, transferred receipts and income are unavailable until next turn. One bad order, whether illegal or unaffordable, rejects the complete set. A single retry reports the reason; continued failure holds. The supplied reach and razeReach lists delimit claim and raze choices.`,
+};
+
+const REFERENCE_SECTIONS: Record<keyof typeof PRESENTATION_SECTIONS, string> = {
+  board: `Geometry: 169 pointy-top hexes, radius 7, axial addresses "q,r". Tile states are wall, cracked wall, rubble; transitions only move forward. Base yield spans 0..3. Effective yield by state is base, floor(base/2), zero. A zero-yield wall still counts as territory and an origin for projection. Hearth: permanent coordinate on ring 5. Home ring: that coordinate and up to six neighbours, seven coordinates where loss of ownership can threaten survival.`,
+  money: `Currency: paint only; initial amount 12. Turn income: sum effective yield of owned dry tiles, equivalently ${TICKS_PER_TURN} ticks times ${INCOME_PER_TICK_PER_YIELD} paint per tick per yield. Claim age: newly acquired tiles are wet and earn zero this turn; Upkeep dries them and earnings begin next turn. Dry ownership cannot be claimed away and is stripped only by razing. Rival territory therefore requires irreversible damage to enter.`,
+  orders: `Charges apply on failure as well as success.
+claim {tile}: unowned wall or cracked wall, distance at most ${FLING_RANGE} from nearest owned tile (hearth if no ownership). Charge ${CLAIM_BASE} + ${CLAIM_PER_DIST} * distance: 4 at distance 1, 6 at distance 2.
+raze {tile}: available from turn ${RAZE_OPEN_TURN}, same distance rule. Charge ${RAZE_COST}, replaced by ${RAZE_HOME_COST} within distance 1 of another living Cog's hearth. First hit: wall cracks, ownership clears, yield is permanently halved for everyone. Second hit: rubble, no yield, no claiming, no adjacency conduction, no reach projection. Salvage: first raze of your own wall pays ${SALVAGE_MULT} * effective yield next turn.
+transfer {to, amount}: another living Cog's alias; charge amount + ${TRANSFER_FEE}; recipient spends the amount next turn.`,
+  survival: `Strike condition: enemy raze on a home-ring tile owned by the victim at turn start. Self-razing is excluded. Life transitions: steady + strike = publicly staggered; staggered + strike on the immediately next turn = eliminated; staggered + no strike next turn = steady. Elimination clears claims to unowned ground, sets paint to zero, and freezes score.
+The counter to a siege is to raze the attacker's nearest foothold: with nothing owned within 2 of your home ring, its second strike cannot land.`,
+  simultaneous: `Decision timing: all nine Cogs act simultaneously on one board snapshot. Resolution order: razes before claims. Double raze in one turn: target destroyed outright. Multiple claimants to a free tile: smear, no owner, both charged fully. Negotiated borders are worth negotiating. Claim against newly razed rubble: void, paint still charged.`,
+  score: `Objective: maximize total income + salvage earned. Score is nondecreasing and ceases at elimination. Spending has no direct score deduction; aggression's cost is lost future income for you and the board.
+Break-even on cashing out a tile you hold is turn 14: before then holding is worth more; after then salvage is.`,
+  budget: `Budget source: stored paint only. New income, salvage and received transfers become funds next turn. Rejection scope: entire order set if any entry is illegal or unaffordable. Retry allowance: one, with reason supplied; subsequent failure holds. Target lists: reach for claims, razeReach for razes.`,
+};
+
+const SECTION_BANKS = {
+  plain: PRESENTATION_SECTIONS,
+  numbered: NUMBERED_SECTIONS,
+  questions: QUESTION_SECTIONS,
+  reordered: REORDERED_SECTIONS,
+  "heldout-briefing": HELDOUT_SECTIONS,
+  "heldout-reference": REFERENCE_SECTIONS,
+} as const;
+
 const PRESENTATIONS = {
   plain: ["board", "money", "orders", "survival", "simultaneous", "score", "budget"],
   numbered: ["score", "board", "money", "orders", "budget", "simultaneous", "survival"],
@@ -204,7 +272,7 @@ export function systemPrompt(doctrine: string, selection: PromptSelection): stri
     const sections = PRESENTATIONS[variant].map((key, index) => {
       const heading = variant === "questions" ? QUESTIONS[key] :
         variant === "numbered" ? `${index + 1}. ${key.toUpperCase()}` : key.toUpperCase();
-      const body = variant.startsWith("heldout-") ? HELDOUT_SECTIONS[key] : PRESENTATION_SECTIONS[key];
+      const body = SECTION_BANKS[variant][key];
       return `${heading}\n${body}`;
     });
     rules = "You control one of nine Cogs claiming resource walls on a hex lattice.\n\n" +

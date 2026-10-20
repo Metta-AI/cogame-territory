@@ -1,4 +1,4 @@
-// Export complete native Territory games as hosted tool conversations.
+// Export complete native Territory games with the hosted JSON reply contract.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -59,7 +59,7 @@ for (let seed = 1; seed <= episodes; seed++) {
       const system = systemPrompt("", selection);
       const user = renderObservation(view);
       rows.push(JSON.stringify({
-        episode_id: `territory-${variant}-${seed}`,
+        episode_id: `territory-${variant}-${seed}-${selectedVariant(selection)}-${selection.promptSeed}`,
         seed: `territory-${variant}-${seed}`,
         scenario_family: `territory-${variant}-${seed}`,
         prompt_template: promptMetadata(selection, system, user),

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROMPT_BANK = "territory-rules-v2";
+export const PROMPT_BANK = "territory-rules-v3";
 export const TRAINING_VARIANTS = [
   "canonical",
   "plain",

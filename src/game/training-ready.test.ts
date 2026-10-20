@@ -100,7 +100,7 @@ it("completes the real nine-seat production loop with exact private attempts and
         const { prompt_template, ...view } = observation.semantic_view;
         expect(view).toEqual(decision.observation);
         expect(prompt_template).toEqual({
-          bank: "territory-rules-v2",
+          bank: "territory-rules-v3",
           variant: "canonical",
           selection: "canonical",
           seed: 0,

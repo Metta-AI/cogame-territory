@@ -41,7 +41,7 @@ def play(binary: Path, variant: str, wording: str, prompt_seed: int, seed: int) 
             view = observation["semantic_view"]
             system, user = [m["content"] for m in observation["messages"]]
             assert view.pop("prompt_template") == {
-                "bank": "territory-rules-v2",
+                "bank": "territory-rules-v3",
                 "selection": wording,
                 "variant": WORDINGS[prompt_seed % 5] if wording == "mixed" else wording,
                 "seed": prompt_seed,

@@ -1,9 +1,10 @@
 # Territory prompt diversity and training
 
-The v2 bank retains the original canonical rules and provides five training
+The v3 bank retains the original canonical rules and provides five training
 presentations: `canonical`, `plain`, `numbered`, `questions`, and `reordered`.
 Alternate presentations paraphrase board, economy, orders, survival, simultaneous
-resolution, scoring, and budgets; their section order and headings vary.
+resolution, scoring, and budgets. Each has independently written sections,
+with different order and headings.
 The reply contract, worked example, doctrine, and strategy guidance remain fixed.
 
 `mixed` requires an independent nonnegative `promptSeed`, choosing one training
@@ -23,7 +24,9 @@ homesteader and raider teachers. All submissions are validated before the
 simultaneous turn resolves. Exports contain `train.jsonl`, `validation.jsonl`,
 and `manifest.json`. Every fifth seed belongs to validation; mixed wording
 cycles separately within each split. Scenario families identify a variant
-and seed. Exact message hashes accompany every exported decision.
+and seed. Episode IDs also include the selected wording and prompt seed, so
+matched exports remain distinct without changing their scenario families.
+Exact message hashes accompany every exported decision.
 Existing output directories are rejected. Opponents' balances and pending
 orders remain private.
 
