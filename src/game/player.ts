@@ -88,8 +88,18 @@ export function makeLlmDecide(
 /** The scripted policy: a pure function of the view, no model, no network. */
 export const makeScriptedDecide =
   (baseline: string) =>
-  (ctx: Ctx): TerritoryDecision =>
-    scriptedDecide(baseline, ctx.view as TerritoryObservation);
+  (ctx: Ctx): TerritoryDecision => {
+    const decision = scriptedDecide(baseline, ctx.view as TerritoryObservation);
+    // A real scripted decision still needs a selected attempt in the private
+    // trajectory. No generation or provider identity is attached to controls.
+    ctx.recordAttempt({
+      prompt: "",
+      response: JSON.stringify(decision),
+      parsedAction: decision,
+      error: null,
+    });
+    return decision;
+  };
 
 /** Choose the policy from the environment and play the slot to `final`. */
 export function run(): Promise<number[]> {
