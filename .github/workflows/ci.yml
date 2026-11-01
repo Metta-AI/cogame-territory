@@ -26,7 +26,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -182,7 +182,8 @@ jobs:
   # docker-smoke just produced.
   # ---------------------------------------------------------------------
   wasm-viewer:
-    runs-on: ubuntu-latest
+    # Playwright 1.55.0 does not support the Ubuntu 26.04 latest runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: docker-smoke
     steps:

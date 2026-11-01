@@ -8,7 +8,7 @@ import { runCoworldPlayer } from "@cogweb/coworld";
 import { runCoworldGame } from "../coworld/server.js";
 import { territoryModule } from "./game.js";
 import { TrainingSession } from "./training-bridge.js";
-import { makeLlmDecide } from "./player.js";
+import { makeLlmDecide, makeScriptedDecide } from "./player.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -161,3 +161,50 @@ it("consumes exhausted parser and engine retries with explicit engine fallbacks"
   expect(engine.step(0, invalid).kind).toBe("rejected");
   expect(engine.step(0, invalid).kind).toBe("consumed_rejection");
 });
+
+it("records complete selected scripted controls without model provenance", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "territory-scripted-training-"));
+  vi.stubEnv("COGAME_RESULTS_URI", join(directory, "results.json"));
+  vi.stubEnv("COGAME_SAVE_REPLAY_URI", join(directory, "replay.json"));
+  vi.stubEnv("COGAME_SAVE_TRAJECTORY_URI", join(directory, "trajectory.jsonl"));
+  const host = await runCoworldGame({
+    host: "127.0.0.1",
+    port: 0,
+    config: {
+      tokens: Array.from({ length: 9 }, (_, seat) => `scripted-${seat}`),
+      players: Array.from({ length: 9 }, (_, seat) => ({ name: `control ${seat}` })),
+      seed: 11,
+      paceMs: 0,
+      turns: 18,
+    },
+  });
+  try {
+    const players = host.playerUrls.map((connect, seat) =>
+      runCoworldPlayer({
+        module: territoryModule,
+        connect,
+        decide: makeScriptedDecide(seat < 5 ? "homesteader" : "raider"),
+      }),
+    );
+    await Promise.all([host.finished, Promise.all(players)]);
+    const trajectory = JSON.parse(await readFile(join(directory, "trajectory.jsonl"), "utf8"));
+    expect(trajectory.episode.status).toBe("completed");
+    expect(trajectory.decisions).toHaveLength(162);
+    for (const decision of trajectory.decisions) {
+      expect(decision.action_status).toBe("accepted");
+      expect(decision.attempts).toHaveLength(1);
+      const attempt = decision.attempts[0];
+      expect(decision.selected_attempt_id).toBe(attempt.attempt_id);
+      expect(attempt.accepted).toBe(true);
+      expect(attempt.origin).toBe("unknown");
+      expect(attempt.prompt).toBe("");
+      expect(attempt.request).toBeNull();
+      expect(attempt.model).toBeNull();
+      expect(attempt.platform_call_id).toBeNull();
+      expect(attempt.parsed_action).toEqual(decision.executed_action);
+      expect(JSON.parse(attempt.response)).toEqual(decision.executed_action);
+    }
+  } finally {
+    await host.close();
+  }
+}, 30000);
