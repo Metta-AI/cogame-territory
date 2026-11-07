@@ -36,7 +36,7 @@ import {
 } from "../shared/engine/constants.js";
 
 const TERRITORY_IMAGE = "{{TERRITORY_IMAGE}}";
-const SOURCE_TREE = "https://github.com/Metta-AI/cogame-territory/tree/main";
+const SOURCE_TREE = "https://github.com/softmax-universe/cogame-territory/tree/main";
 
 // ── config / results JSON-Schema contracts ───────────────────────────────────
 // Hand-authored draft-2020-12 schemas (the repo has no zod-to-json-schema dep).

@@ -18,7 +18,7 @@
 # Repo secrets required: SOFTMAX_TOKEN (set by coworld-builder's propagate-secrets.yml).
 #
 # The agent reads the outcome back with:
-#   gh run download <run_id> -R Metta-AI/cogame-territory -n release-result \
+#   gh run download <run_id> -R softmax-universe/cogame-territory -n release-result \
 #     -D /tmp/rr && jq . /tmp/rr/release-result.json
 name: Coworld release
 
@@ -118,7 +118,7 @@ jobs:
           set -euo pipefail
           echo "Authenticate to Softmax" > "$RR/current_step"
           if [ -z "${SOFTMAX_TOKEN}" ]; then
-            echo "::error::SOFTMAX_TOKEN secret is not set on this repo (dispatch propagate-secrets.yml in Metta-AI/coworld-builder)"
+            echo "::error::SOFTMAX_TOKEN secret is not set on this repo (dispatch propagate-secrets.yml in softmax-universe/coworld-builder)"
             exit 1
           fi
           uvx --from "$COWORLD_PKG" softmax set-token "$SOFTMAX_TOKEN"

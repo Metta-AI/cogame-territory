@@ -17,7 +17,7 @@
       "run": [
         "/bin/territory"
       ],
-      "source_url": "https://github.com/Metta-AI/cogame-territory/tree/main"
+      "source_url": "https://github.com/softmax-universe/cogame-territory/tree/main"
     },
     "replay_viewer": {
       "bundle": "build/static-replay-viewer"
@@ -203,7 +203,7 @@
     "docs": {
       "readme": {
         "type": "uri",
-        "value": "https://github.com/Metta-AI/cogame-territory/tree/main/README.md"
+        "value": "https://github.com/softmax-universe/cogame-territory/tree/main/README.md"
       },
       "pages": [
         {
@@ -243,7 +243,7 @@
       "env": {
         "PLAYER_SCRIPTED": "homesteader"
       },
-      "source_url": "https://github.com/Metta-AI/cogame-territory/tree/main",
+      "source_url": "https://github.com/softmax-universe/cogame-territory/tree/main",
       "id": "territory-homesteader",
       "name": "Territory Homesteader",
       "description": "Deterministic no-LLM baseline: claims the richest reachable wall it can afford, never razes. Always legal, so it certifies the contract offline."
@@ -257,7 +257,7 @@
       "env": {
         "PLAYER_SCRIPTED": "raider"
       },
-      "source_url": "https://github.com/Metta-AI/cogame-territory/tree/main",
+      "source_url": "https://github.com/softmax-universe/cogame-territory/tree/main",
       "id": "territory-raider",
       "name": "Territory Raider",
       "description": "Deterministic no-LLM baseline: homesteads, then from turn 4 razes the leader's richest reachable wall."
